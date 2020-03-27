@@ -1,0 +1,14 @@
+<package>
+  <description brief="A package to generate a `controldev/RawCommand` output port through joystick messages received from the WebSocket client. ">
+  The component receives a JSON from the WebSocket client, with `axis` and `buttons` attributes as in the Standard Gamepad from JS Gamepad library but with just the values at those fields. Also, the received JSON has a boolean `status` field with true indicating that it should write the command to the port. Note, the task just writes at `raw_command_port` when receives a message.
+
+Finally, for each received message the server (task) sends a message back to its client with a JSON containing just a `result` field. That field receives true when the received message has all the attributes and was decoded translated correctly to `controldev/RawCommand` type being able to write at the port, and receives false otherwise. Note that the server just keeps one client, the lastest connected one.
+  </description>
+  <author>Henrique Ferreira Junior/henrique.ferreira@tidewise.io</author>
+  <license></license>
+  <depend package="base/cmake" />
+  
+  <depend package="controldev" />
+  <depend package="jsoncpp" />
+  <depend package="seasocks"/>
+</package>

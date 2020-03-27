@@ -1,0 +1,15 @@
+name "controldev_websocket"
+
+using_library 'controldev'
+using_library 'jsoncpp', typekit: false
+
+import_types_from "std"
+import_types_from "base"
+
+task_context "Task" do
+    property 'port', 'uint16_t', 58000
+    output_port 'raw_command', 'controldev/RawCommand'
+
+    periodic 0.1
+end
+
