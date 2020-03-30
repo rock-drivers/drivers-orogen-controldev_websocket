@@ -1,0 +1,9 @@
+templates/*
+.orogen/*
+*~
+.*.swp
+build/*
+
+*autobuild-stamp
+.vscode/
+
