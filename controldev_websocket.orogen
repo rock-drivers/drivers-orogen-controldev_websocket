@@ -3,11 +3,13 @@ name "controldev_websocket"
 using_library 'controldev'
 using_library 'jsoncpp', typekit: false
 
-import_types_from "std"
 import_types_from "base"
+import_types_from 'controldev/RawCommand.hpp'
 
 task_context "Task" do
     property 'port', 'uint16_t', 58000
+    property('button_threshold', 'double', 0.5).doc('Above this value the button is pressed')
+
     output_port 'raw_command', 'controldev/RawCommand'
 
     periodic 0.1
