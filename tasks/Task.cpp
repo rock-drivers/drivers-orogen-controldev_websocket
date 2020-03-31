@@ -1,6 +1,9 @@
 /* Generated from orogen/lib/orogen/templates/tasks/Task.cpp */
 
 #include "Task.hpp"
+#include "../Mapping.hpp"
+
+#include <base-logging/Logging.hpp>
 
 #include <seasocks/PrintfLogger.h>
 #include <seasocks/WebSocket.h>
@@ -18,6 +21,8 @@ using namespace seasocks;
 struct controldev_websocket::JoystickHandler : WebSocket::Handler {
     WebSocket *connection = nullptr;
     Task *task = nullptr;
+    Json::Value msg;
+    Json::FastWriter fast;
     void onConnect(WebSocket *socket) override{
         if (connection != nullptr){
             connection->close();
@@ -25,7 +30,6 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
         connection = socket;
     }
     void onData(WebSocket *socket, const char *data) override{
-        Json::Value msg;
         if (connection == socket){
             msg["result"] = Json::Value(task->updateRawCommand(data));
             if (msg["result"].asBool() && task->controlling){
@@ -35,7 +39,6 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
         } else {
             msg["result"] = false;
         }
-        Json::FastWriter fast;
         connection->send(fast.write(msg));
     }
     void onDisconnect(WebSocket *socket) override{
@@ -45,42 +48,40 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
     }
 };
 
+Json::Value jdata;
+Json::CharReaderBuilder rbuilder;
+std::unique_ptr<Json::CharReader> const reader(rbuilder.newCharReader());
 bool Task::updateRawCommand(const char *data){
-    Json::Value jdata;
-    Json::CharReaderBuilder rbuilder;
-    std::unique_ptr<Json::CharReader> const reader(rbuilder.newCharReader());
+    ++received;
     std::string errs;
 
     if (!reader->parse(data, data+std::strlen(data), &jdata, &errs)){
-        std::cout << errs << std::endl;
+        LOG_ERROR_S << "Failed parsing the message, got error: " << errs << std::endl;
+        ++errors;
         return false;
     }
-    if (!(jdata.isMember("status") && jdata.isMember("axes") && jdata.isMember("buttons"))) {
+    if (!jdata.isMember("status") || !jdata.isMember("axes") || !jdata.isMember("buttons")) {
+        LOG_ERROR_S << "Invalid message, it does not contain required fields." << std::endl;
+        ++errors;
         return false;
     }
     try{
         controlling = jdata["status"].asBool();
 
-        raw_cmd_obj.axisValue[0] = jdata["axes"][0].asDouble();
-        raw_cmd_obj.axisValue[1] = jdata["axes"][1].asDouble();
-        raw_cmd_obj.axisValue[2] = jdata["buttons"][6].asDouble() * 2 - 1;
-        raw_cmd_obj.axisValue[3] = jdata["axes"][2].asDouble();
-        raw_cmd_obj.axisValue[4] = jdata["axes"][3].asDouble();
-        raw_cmd_obj.axisValue[5] = jdata["buttons"][7].asDouble() * 2 - 1;
-        raw_cmd_obj.axisValue[6] = jdata["buttons"][15].asDouble() - jdata["buttons"][14].asDouble();
-        raw_cmd_obj.axisValue[7] = jdata["buttons"][13].asDouble() - jdata["buttons"][12].asDouble();
+        auto axis = _axis_map.get();
+        for (uint i = 0; i < axis.size(); ++i){
+            raw_cmd_obj.axisValue[i] = jdata[axis[i].getType()][axis[i].index].asDouble();
+        }
+        auto button = _button_map.get();
+        for (uint i = 0; i < button.size(); ++i){
+            raw_cmd_obj.buttonValue[i] = jdata[button[i].getType()][button[i].index]
+                                             .asDouble() > _button_threshold.get();
+        }
 
-        raw_cmd_obj.buttonValue[0] = jdata["buttons"][0].asDouble() > _button_threshold.get();
-        raw_cmd_obj.buttonValue[1] = jdata["buttons"][1].asDouble() > _button_threshold.get();
-        raw_cmd_obj.buttonValue[2] = jdata["buttons"][2].asDouble() > _button_threshold.get();
-        raw_cmd_obj.buttonValue[3] = jdata["buttons"][3].asDouble() > _button_threshold.get();
-        raw_cmd_obj.buttonValue[4] = jdata["buttons"][4].asDouble() > _button_threshold.get();
-        raw_cmd_obj.buttonValue[5] = jdata["buttons"][5].asDouble() > _button_threshold.get();
-        raw_cmd_obj.buttonValue[6] = jdata["buttons"][8].asDouble() > _button_threshold.get();
-        raw_cmd_obj.buttonValue[7] = jdata["buttons"][9].asDouble() > _button_threshold.get();
-
+    // An exception here means a failure while converting the Gamepad. Just return false.
     } catch (std::exception e){
-        std::cout << e.what() << std::endl;
+        LOG_ERROR_S << "Invalid message, got error: " << e.what() << std::endl;
+        ++errors;
         return false;
     }
     return true;
@@ -89,10 +90,8 @@ bool Task::updateRawCommand(const char *data){
 Task::Task(std::string const& name, TaskCore::TaskState initial_state)
     : TaskBase(name, initial_state)
 {
-    for (int i=1; i<=8; ++i){
-        raw_cmd_obj.buttonValue.push_back(0);
-        raw_cmd_obj.axisValue.push_back(0.0);
-    }
+    raw_cmd_obj.buttonValue.resize(8, 0);
+    raw_cmd_obj.axisValue.resize(8, 0.0);
 }
 
 Task::~Task()
@@ -126,17 +125,16 @@ bool Task::startHook()
     thread = new std::thread([this]{ this->server->loop(); });
 
     return true;
-    return true;
 }
 void Task::updateHook()
 {
     TaskBase::updateHook();
+    _received.write(received);
+    _errors.write(errors);
 }
 void Task::errorHook()
 {
     TaskBase::errorHook();
-    server->terminate();
-    thread->join();
 }
 void Task::stopHook()
 {

@@ -28,7 +28,7 @@ namespace controldev_websocket{
      */
     class Task : public TaskBase
     {
-	friend class TaskBase;
+    friend class TaskBase;
     friend struct JoystickHandler;
 
     seasocks::Server *server = nullptr;
@@ -38,6 +38,9 @@ namespace controldev_websocket{
     bool controlling;
     bool updateRawCommand(const char *data);
 
+    int errors = 0;
+    int received = 0;
+
     public:
         /** TaskContext constructor for Task
          * \param name Name of the task. This name needs to be unique to make it identifiable via nameservices.
@@ -45,7 +48,7 @@ namespace controldev_websocket{
          */
         Task(std::string const& name = "controldev_websocket::Task", TaskCore::TaskState initial_state = Stopped);
 
-	    ~Task();
+        ~Task();
 
         bool configureHook();
 

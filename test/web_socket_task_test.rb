@@ -17,22 +17,14 @@ def websocket_connect(state)
             state.received_messages.append(message)
         end
     end
-    rescue Kontena::Websocket::CloseError => exc
-        state.current_state = :closed
-    rescue Kontena::Websocket::Error => exc
-        state.has_error = true
+rescue Kontena::Websocket::CloseError => exc
+    state.current_state = :closed
+rescue Kontena::Websocket::Error => exc
+    state.has_error = true
 end
 
 describe OroGen.controldev.WebSocketTask do
     run_live
-
-    def start_websocket (name)
-        $first_websockets[name] = WebsocketStruct.new(nil, [], :pending, false)
-
-        thread = Thread.new {
-            websocket_connect(name)
-        }
-    end
 
     before do
         @task = task = syskit_deploy(
