@@ -3,7 +3,9 @@
 require 'kontena-websocket-client'
 require 'json'
 
-using_task_library 'controldev'
+using_task_library 'controldev_websocket'
+
+import_types_from 'controldev_websocket'
 
 WebsocketStruct = Concurrent::MutableStruct.new :ws,
                   :received_messages, :current_state, :has_error
@@ -23,14 +25,60 @@ rescue Kontena::Websocket::Error => exc
     state.has_error = true
 end
 
-describe OroGen.controldev.WebSocketTask do
+describe OroGen.controldev_websocket.Task do
     run_live
 
     before do
         @task = task = syskit_deploy(
-            OroGen.controldev.WebSocketTask.deployed_as('websocket')
+            OroGen.controldev_websocket.Task.deployed_as('websocket')
         )
         task.properties.port = 65432
+        task.axis_map = [Mapping. new,
+                         Mapping. new,
+                         Mapping. new,
+                         Mapping. new,
+                         Mapping. new,
+                         Mapping. new]
+        task.axis_map[0].index = 0
+        task.axis_map[0].type = 0
+        task.axis_map[1].index = 1
+        task.axis_map[1].type = 0
+        task.axis_map[2].index = 6
+        task.axis_map[2].type = 1
+        task.axis_map[3].index = 2
+        task.axis_map[3].type = 0
+        task.axis_map[4].index = 3
+        task.axis_map[4].type = 0
+        task.axis_map[5].index = 7
+        task.axis_map[5].type = 1
+
+        task.button_map = [ButtonMapping. new,
+                           ButtonMapping. new,
+                           ButtonMapping. new,
+                           ButtonMapping. new,
+                           ButtonMapping. new,
+                           ButtonMapping. new,
+                           ButtonMapping. new,
+                           ButtonMapping. new,
+                           ButtonMapping. new,
+                           ButtonMapping. new,
+                           ButtonMapping. new,
+                           ButtonMapping. new,
+                           ButtonMapping. new]
+        thresh = 0.5
+        task.button_map[0].index = 0
+        task.button_map[2].index = 1
+        task.button_map[3].index = 2
+        task.button_map[4].index = 3
+        task.button_map[5].index = 4
+        task.button_map[6].index = 5
+        task.button_map[7].index = 8
+        task.button_map[8].index = 9
+        task.button_map[9].index = 12
+        task.button_map[10].index = 13
+        task.button_map[11].index = 14
+        task.button_map[12].index = 15
+
         @url = 'ws://localhost:65432/ws'
 
         syskit_configure(task)
