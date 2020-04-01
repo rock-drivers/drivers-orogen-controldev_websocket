@@ -16,24 +16,32 @@ namespace controldev_websocket
          * Enum to represent an axis or a button.
          *
          *
-         * @note don't use this value directly. It's only public to allow this class
-         * to be used as an interface type.
+         * @note don't use this value directly, is useless. Use getFieldName() to
+         * access the JSON Field Name for this type.
          */
         Type type;
 
-        std::string getType(){
+        std::string getFieldName(){
+            return mapFieldName(type);
+        };
+
+        static std::string mapFieldName(Type type){
             if (type == Type::Button){
                 return "button";
             }
             if (type == Type::Axis){
                 return "axes";
             }
-            return "";
-        };
+            throw "Failed to get Field Name. The type set is invalid";
+        }
 
         int index;
     };
 
+    struct ButtonMapping: public Mapping
+    {
+        double threshold;
+    };
 } // end namespace controldev_websocket
 
 #endif

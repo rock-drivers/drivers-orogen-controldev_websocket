@@ -10,9 +10,8 @@ import_types_from 'Mapping.hpp'
 
 task_context 'Task' do
     property 'port', 'uint16_t', 58000
-    property('button_threshold', 'double', 0.5).doc('Above this value the button is pressed')
     property 'axis_map', '/std/vector</controldev_websocket/Mapping'
-    property 'button_map', '/std/vector</controldev_websocket/Mapping'
+    property 'button_map', '/std/vector</controldev_websocket/ButtonMapping'
 
     output_port 'raw_command', 'controldev/RawCommand'
     output_port 'errors', 'int'
@@ -21,3 +20,4 @@ task_context 'Task' do
     periodic 0.1
 end
 
+type_export_policy :all

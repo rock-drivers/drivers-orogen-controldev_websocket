@@ -30,14 +30,16 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
         connection = socket;
     }
     void onData(WebSocket *socket, const char *data) override{
+        msg["result"] = false;
         if (connection == socket){
+            ++task->received;
             msg["result"] = Json::Value(task->updateRawCommand(data));
             if (msg["result"].asBool() && task->controlling){
                 task->raw_cmd_obj.time = base::Time::now();
                 task->_raw_command.write(task->raw_cmd_obj);
+            } else {
+                ++task->errors;
             }
-        } else {
-            msg["result"] = false;
         }
         connection->send(fast.write(msg));
     }
@@ -48,40 +50,53 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
     }
 };
 
-Json::Value jdata;
-Json::CharReaderBuilder rbuilder;
-std::unique_ptr<Json::CharReader> const reader(rbuilder.newCharReader());
-bool Task::updateRawCommand(const char *data){
-    ++received;
-    std::string errs;
+struct controldev_websocket::WrapperJSON{
+    Json::Value jdata;
+    Json::CharReaderBuilder rbuilder;
+    std::unique_ptr<Json::CharReader> const reader;
 
-    if (!reader->parse(data, data+std::strlen(data), &jdata, &errs)){
+    WrapperJSON() : reader(rbuilder.newCharReader()) {
+
+    }
+
+    double getValue(const std::string &field, int index){
+        return jdata[field][index].asDouble();
+    }
+};
+
+bool Task::updateRawCommand(const char *data){
+    std::string errs;
+    // If an error occurs trying to get the parameters should not ignore it.
+    auto axis = _axis_map.get();
+    auto button = _button_map.get();
+
+    if (!wrapper->reader->parse(data, data+std::strlen(data), &wrapper->jdata, &errs)){
         LOG_ERROR_S << "Failed parsing the message, got error: " << errs << std::endl;
-        ++errors;
         return false;
     }
-    if (!jdata.isMember("status") || !jdata.isMember("axes") || !jdata.isMember("buttons")) {
-        LOG_ERROR_S << "Invalid message, it does not contain required fields." << std::endl;
-        ++errors;
+    if (!wrapper->jdata.isMember("status") ||
+        !wrapper->jdata.isMember(Mapping::mapFieldName(Mapping::Type::Axis)) ||
+        !wrapper->jdata.isMember(Mapping::mapFieldName(Mapping::Type::Button))) {
+        LOG_ERROR_S << "Invalid message, it doesn't contain the required fields.";
+        LOG_ERROR_S << std::endl;
         return false;
     }
     try{
-        controlling = jdata["status"].asBool();
+        controlling = wrapper->jdata["status"].asBool();
 
-        auto axis = _axis_map.get();
         for (uint i = 0; i < axis.size(); ++i){
-            raw_cmd_obj.axisValue[i] = jdata[axis[i].getType()][axis[i].index].asDouble();
+            raw_cmd_obj.axisValue.at(i) = wrapper->getValue(axis.at(i).getFieldName(),
+                                                           axis.at(i).index);
         }
-        auto button = _button_map.get();
         for (uint i = 0; i < button.size(); ++i){
-            raw_cmd_obj.buttonValue[i] = jdata[button[i].getType()][button[i].index]
-                                             .asDouble() > _button_threshold.get();
+            raw_cmd_obj.buttonValue.at(i) = wrapper->getValue(button.at(i).getFieldName(),
+                                                             button.at(i).index)
+                                                             > button.at(i).threshold;
         }
 
     // An exception here means a failure while converting the Gamepad. Just return false.
     } catch (std::exception e){
         LOG_ERROR_S << "Invalid message, got error: " << e.what() << std::endl;
-        ++errors;
         return false;
     }
     return true;
@@ -90,8 +105,8 @@ bool Task::updateRawCommand(const char *data){
 Task::Task(std::string const& name, TaskCore::TaskState initial_state)
     : TaskBase(name, initial_state)
 {
-    raw_cmd_obj.buttonValue.resize(8, 0);
-    raw_cmd_obj.axisValue.resize(8, 0.0);
+    raw_cmd_obj.buttonValue.resize(_button_map.get().size(), 0);
+    raw_cmd_obj.axisValue.resize(_axis_map.get().size(), 0.0);
 }
 
 Task::~Task()
@@ -103,11 +118,12 @@ bool Task::configureHook()
     if (! TaskBase::configureHook()){
         return false;
     }
-
+    wrapper = new WrapperJSON();
     auto logger = std::make_shared<PrintfLogger>(Logger::Level::Debug);
     server = new Server (logger);
     handler = std::make_shared<JoystickHandler>();
     handler->task = this;
+
 
     return true;
 }
@@ -147,4 +163,5 @@ void Task::cleanupHook()
     TaskBase::cleanupHook();
     delete server;
     delete thread;
+    delete wrapper;
 }
