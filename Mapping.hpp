@@ -27,7 +27,7 @@ namespace controldev_websocket
 
         static std::string mapFieldName(Type type){
             if (type == Type::Button){
-                return "button";
+                return "buttons";
             }
             if (type == Type::Axis){
                 return "axes";
