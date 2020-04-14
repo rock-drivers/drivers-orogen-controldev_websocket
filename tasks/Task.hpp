@@ -3,8 +3,11 @@
 #ifndef CONTROLDEV_WEBSOCKET_TASK_TASK_HPP
 #define CONTROLDEV_WEBSOCKET_TASK_TASK_HPP
 
+#include "../controldev_websocketTypes.hpp"
 #include "controldev_websocket/TaskBase.hpp"
 #include <controldev/RawCommand.hpp>
+
+#include <vector>
 #include <seasocks/Server.h>
 #include <thread>
 #include <memory>
@@ -40,6 +43,9 @@ namespace controldev_websocket{
     controldev::RawCommand raw_cmd_obj;
     bool controlling;
     bool updateRawCommand(const char *data);
+
+    std::vector<Mapping> *axis = nullptr;
+    std::vector<ButtonMapping> *button = nullptr;
 
     int errors = 0;
     int received = 0;

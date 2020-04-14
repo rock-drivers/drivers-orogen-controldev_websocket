@@ -1,7 +1,6 @@
 /* Generated from orogen/lib/orogen/templates/tasks/Task.cpp */
 
 #include "Task.hpp"
-#include "../Mapping.hpp"
 
 #include <base-logging/Logging.hpp>
 
@@ -23,6 +22,8 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
     Task *task = nullptr;
     Json::Value msg;
     Json::FastWriter fast;
+    Statistics statistic;
+
     void onConnect(WebSocket *socket) override{
         if (connection != nullptr){
             connection->close();
@@ -41,6 +42,10 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
                 ++task->errors;
             }
         }
+        statistic.received = task->received;
+        statistic.errors = task->errors;
+        statistic.time = base::Time::now();
+        task->_statistics.write(statistic);
         connection->send(fast.write(msg));
     }
     void onDisconnect(WebSocket *socket) override{
@@ -59,24 +64,31 @@ struct controldev_websocket::WrapperJSON{
 
     }
 
-    double getValue(const std::string &field, int index){
-        return jdata[field][index].asDouble();
+    double getValue(Mapping::Type type, int index){
+        return jdata[mapFieldName(type)][index].asDouble();
+    }
+
+    static std::string mapFieldName(Mapping::Type type){
+        if (type == Mapping::Type::Button){
+            return "buttons";
+        }
+        if (type == Mapping::Type::Axis){
+            return "axes";
+        }
+        throw "Failed to get Field Name. The type set is invalid";
     }
 };
 
 bool Task::updateRawCommand(const char *data){
     std::string errs;
-    // If an error occurs trying to get the parameters should not ignore it.
-    auto axis = _axis_map.get();
-    auto button = _button_map.get();
 
     if (!wrapper->reader->parse(data, data+std::strlen(data), &wrapper->jdata, &errs)){
         LOG_ERROR_S << "Failed parsing the message, got error: " << errs << std::endl;
         return false;
     }
     if (!wrapper->jdata.isMember("status") ||
-        !wrapper->jdata.isMember(Mapping::mapFieldName(Mapping::Type::Axis)) ||
-        !wrapper->jdata.isMember(Mapping::mapFieldName(Mapping::Type::Button))) {
+        !wrapper->jdata.isMember(WrapperJSON::mapFieldName(Mapping::Type::Axis)) ||
+        !wrapper->jdata.isMember(WrapperJSON::mapFieldName(Mapping::Type::Button))) {
         LOG_ERROR_S << "Invalid message, it doesn't contain the required fields.";
         LOG_ERROR_S << std::endl;
         return false;
@@ -84,18 +96,19 @@ bool Task::updateRawCommand(const char *data){
     try{
         controlling = wrapper->jdata["status"].asBool();
 
-        for (uint i = 0; i < axis.size(); ++i){
-            raw_cmd_obj.axisValue.at(i) = wrapper->getValue(axis.at(i).getFieldName(),
-                                                           axis.at(i).index);
+        for (uint i = 0; i < axis->size(); ++i){
+            raw_cmd_obj.axisValue.at(i) = wrapper->getValue(axis->at(i).type,
+                                                            axis->at(i).index);
         }
-        for (uint i = 0; i < button.size(); ++i){
-            raw_cmd_obj.buttonValue.at(i) = wrapper->getValue(button.at(i).getFieldName(),
-                                                             button.at(i).index)
-                                                             > button.at(i).threshold;
+        for (uint i = 0; i < button->size(); ++i){
+            raw_cmd_obj.buttonValue.at(i) = wrapper->getValue(button->at(i).type,
+                                                              button->at(i).index)
+                                                              > button->at(i).threshold;
         }
 
-    // An exception here means a failure while converting the Gamepad. Just return false.
-    } catch (std::exception e){
+    // A failure here means that the client sent a bad message or the mapping isn't good.
+    // Just inform the client: return false.
+    } catch (const std::exception &e){
         LOG_ERROR_S << "Invalid message, got error: " << e.what() << std::endl;
         return false;
     }
@@ -105,8 +118,6 @@ bool Task::updateRawCommand(const char *data){
 Task::Task(std::string const& name, TaskCore::TaskState initial_state)
     : TaskBase(name, initial_state)
 {
-    raw_cmd_obj.buttonValue.resize(_button_map.get().size(), 0);
-    raw_cmd_obj.axisValue.resize(_axis_map.get().size(), 0.0);
 }
 
 Task::~Task()
@@ -118,12 +129,18 @@ bool Task::configureHook()
     if (! TaskBase::configureHook()){
         return false;
     }
+
+    button = new std::vector<ButtonMapping>(_button_map.get());
+    axis = new auto(_axis_map.get());
+
+    raw_cmd_obj.buttonValue.resize(button->size(), 0);
+    raw_cmd_obj.axisValue.resize(axis->size(), 0.0);
+
     wrapper = new WrapperJSON();
     auto logger = std::make_shared<PrintfLogger>(Logger::Level::Debug);
     server = new Server (logger);
     handler = std::make_shared<JoystickHandler>();
     handler->task = this;
-
 
     return true;
 }
@@ -145,8 +162,6 @@ bool Task::startHook()
 void Task::updateHook()
 {
     TaskBase::updateHook();
-    _received.write(received);
-    _errors.write(errors);
 }
 void Task::errorHook()
 {

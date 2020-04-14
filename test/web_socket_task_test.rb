@@ -193,22 +193,35 @@ describe OroGen.controldev_websocket.Task do
         it 'do correct axis conversion' do
             s = @first_websocket
             task = @task
-            msg = { :axes => [-0.1, -0.2, -0.4, -0.5],
+            msg = { :axes => [0.1, 0.2, 0.4, 0.5],
                     :buttons => Array.new(16, 0),
                     :status => true }
-            msg[:buttons][6] = 0.35
-            msg[:buttons][7] = 0.2
-            msg[:buttons][15] = 0.1
-            msg[:buttons][14] = 0.8
-            msg[:buttons][13] = 0.1
-            msg[:buttons][12] = 0.9
-            expected = [-0.1, -0.2, -0.3, -0.4, -0.5, -0.6, -0.7, -0.8]
+            msg[:buttons][6] = 0.3
+            msg[:buttons][7] = 0.6
+            expected = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
             sample = expect_execution { s.ws.send(JSON.generate(msg))}.timeout(1).
                 to { have_one_new_sample task.raw_command_port }
 
-            assert_values_near Array.new(8, 0), sample.buttonValue.to_a
+            assert_values_near Array.new(13, 0), sample.buttonValue.to_a
 
             assert_values_near expected, sample.axisValue.to_a
+        end
+
+        it 'do correct button conversion' do
+            s = @first_websocket
+            task = @task
+            msg = { :axes => Array.new(4, 0),
+                    :buttons => [0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0, 0,
+                                 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85],
+                    :status => true }
+            expected = [0, 0, 0, 0, 0, 0,
+                        1, 1, 1, 1, 1, 1, 1]
+            sample = expect_execution { s.ws.send(JSON.generate(msg))}.timeout(1).
+                to { have_one_new_sample task.raw_command_port }
+
+            assert_values_near Array.new(6, 0), sample.axisValue.to_a
+
+            assert_values_near expected, sample.buttonValue.to_a
         end
     end
 end
