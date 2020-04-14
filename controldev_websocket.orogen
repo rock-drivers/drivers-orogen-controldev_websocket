@@ -6,16 +6,15 @@ using_library 'jsoncpp', typekit: false
 
 import_types_from 'base'
 import_types_from 'controldev/RawCommand.hpp'
-import_types_from 'Mapping.hpp'
+import_types_from 'controldev_websocketTypes.hpp'
 
 task_context 'Task' do
     property 'port', 'uint16_t', 58000
-    property 'axis_map', '/std/vector</controldev_websocket/Mapping'
-    property 'button_map', '/std/vector</controldev_websocket/ButtonMapping'
+    property 'axis_map', '/std/vector</controldev_websocket/Mapping>'
+    property 'button_map', '/std/vector</controldev_websocket/ButtonMapping>'
 
     output_port 'raw_command', 'controldev/RawCommand'
-    output_port 'errors', 'int'
-    output_port 'received', 'int'
+    output_port 'statistics', 'controldev_websocket/Statistics'
 
     periodic 0.1
 end
