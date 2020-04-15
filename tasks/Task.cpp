@@ -38,7 +38,8 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
             if (msg["result"].asBool() && task->controlling){
                 task->raw_cmd_obj.time = base::Time::now();
                 task->_raw_command.write(task->raw_cmd_obj);
-            } else {
+            }
+            if (!msg["result"].asBool()){
                 ++task->errors;
             }
         }
@@ -129,6 +130,9 @@ bool Task::configureHook()
     if (! TaskBase::configureHook()){
         return false;
     }
+
+    received = 0;
+    errors = 0;
 
     button = new std::vector<ButtonMapping>(_button_map.get());
     axis = new auto(_axis_map.get());
