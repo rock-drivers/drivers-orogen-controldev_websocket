@@ -19,9 +19,9 @@ def websocket_connect(state)
             state.received_messages.append(message)
         end
     end
-rescue Kontena::Websocket::CloseError => exc
+rescue Kontena::Websocket::CloseError
     state.current_state = :closed
-rescue Kontena::Websocket::Error => exc
+rescue Kontena::Websocket::Error
     state.has_error = true
 end
 
@@ -143,7 +143,7 @@ describe OroGen.controldev_websocket.Task do
             assert !JSON.parse(s.received_messages.pop)["result"]
         end
 
-        it 'reponses true to correct messages' do
+        it 'responses true to correct messages' do
             msg = { :axes => Array.new(4, 0),
                     :buttons => Array.new(16, 0),
                     :status => false }
@@ -186,7 +186,7 @@ describe OroGen.controldev_websocket.Task do
             msg = { :axes => Array.new(4, 0),
                     :buttons => Array.new(16, 0),
                     :status => true }
-            sample = expect_execution { s.ws.send(JSON.generate(msg))}.timeout(1).
+            expect_execution { s.ws.send(JSON.generate(msg))}.timeout(1).
                 to { have_one_new_sample task.raw_command_port }
         end
 
@@ -222,6 +222,63 @@ describe OroGen.controldev_websocket.Task do
             assert_values_near Array.new(6, 0), sample.axisValue.to_a
 
             assert_values_near expected, sample.buttonValue.to_a
+        end
+    end
+
+    describe 'write correctly at statistics port' do
+        it 'just count received to correct message' do
+            s = @first_websocket
+            task = @task
+            msg = { :axes => Array.new(4, 0),
+                    :buttons => Array.new(16, 0),
+                    :status => false }
+            sample = expect_execution { s.ws.send(JSON.generate(msg)) }.timeout(1).
+                to { have_one_new_sample task.statistics_port }
+
+            assert_equal 1, sample.received
+
+            assert_equal 0, sample.errors
+        end
+
+        it 'count error parsing the message' do
+            s = @first_websocket
+            task = @task
+            msg = 'pineapple'
+
+            sample = expect_execution { s.ws.send(msg)}.timeout(1).
+                to { have_one_new_sample task.statistics_port }
+
+            assert sample.received == 1
+
+            assert_equal 1, sample.errors
+        end
+
+        it 'count error when message does not contains required fields' do
+            s = @first_websocket
+            task = @task
+            msg = { :pine => 'apple' }
+
+            sample = expect_execution { s.ws.send(JSON.generate(msg))}.timeout(1).
+                to { have_one_new_sample task.statistics_port }
+
+            assert sample.received == 1
+
+            assert_equal 1, sample.errors
+        end
+
+        it 'count error when message fields are not correct' do
+            s = @first_websocket
+            task = @task
+            msg = { :axes => "pine",
+                    :buttons => "apple",
+                    :status => "pineapple" }
+
+            sample = expect_execution { s.ws.send(JSON.generate(msg))}.timeout(1).
+                to { have_one_new_sample task.statistics_port }
+
+            assert sample.received == 1
+
+            assert_equal 1, sample.errors
         end
     end
 end
