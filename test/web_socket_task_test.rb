@@ -143,10 +143,31 @@ describe OroGen.controldev_websocket.Task do
             assert !JSON.parse(s.received_messages.pop)["result"]
         end
 
-        it 'responses true to correct messages' do
+        it 'responses false to correct message when is not controlling' do
             msg = { :axes => Array.new(4, 0),
-                    :buttons => Array.new(16, 0),
-                    :status => false }
+                    :buttons => Array.new(16, 0) }
+
+            s = @first_websocket
+            expect_execution{ s.ws.send(JSON.generate(msg)) }.
+                to { achieve { s.received_messages.any? } }
+
+            assert !JSON.parse(s.received_messages.pop)["result"]
+        end
+
+        it 'responses true to correct messages' do
+            msg = { :test_message => {
+                        :axes => Array.new(4, 0),
+                        :buttons => Array.new(16, 0) }
+                  }
+
+            s = @first_websocket
+            expect_execution{ s.ws.send(JSON.generate(msg)) }.
+                to { achieve { s.received_messages.any? } }
+
+            assert JSON.parse(s.received_messages.pop)["result"]
+
+            msg = { :axes => Array.new(4, 0),
+                    :buttons => Array.new(16, 0) }
 
             s = @first_websocket
             expect_execution{ s.ws.send(JSON.generate(msg)) }.
@@ -156,36 +177,49 @@ describe OroGen.controldev_websocket.Task do
         end
     end
 
-    describe 'server write at the port correctely' do
-        it 'doesn\'t write when receiving nothing' do
+    describe "server doesn't write at the port correctely" do
+        it 'when receiving nothing' do
             task = @task
             expect_execution.
                 to { have_no_new_sample task.raw_command_port, at_least_during: 1.0 }
         end
 
-        it 'doesn\'t write when receiving wrong messages' do
+        it 'when receiving wrong messages' do
             s = @first_websocket
             task = @task
             expect_execution { s.ws.send('pineapple') }.
                 to { have_no_new_sample task.raw_command_port, at_least_during: 1.0 }
         end
 
-        it 'doesn\'t write when not controlling' do
+        it 'when not controlling' do
             s = @first_websocket
             task = @task
             msg = { :axes => Array.new(4, 0),
-                    :buttons => Array.new(16, 0),
-                    :status => false }
+                    :buttons => Array.new(16, 0) }
             expect_execution { s.ws.send(JSON.generate(msg)) }.
                 to { have_no_new_sample task.raw_command_port, at_least_during: 1.0 }
         end
+    end
 
-        it 'writes when is controlling' do
+    describe "server write at the port correctely" do
+        before do
+            msg = { :test_message => {
+                        :axes => Array.new(4, 0),
+                        :buttons => Array.new(16, 0) }
+                  }
+
+            s = @first_websocket
+            expect_execution{ s.ws.send(JSON.generate(msg)) }.
+                to { achieve { s.received_messages.any? } }
+
+            assert JSON.parse(s.received_messages.pop)["result"]
+        end
+
+        it 'when is controlling' do
             s = @first_websocket
             task = @task
             msg = { :axes => Array.new(4, 0),
-                    :buttons => Array.new(16, 0),
-                    :status => true }
+                    :buttons => Array.new(16, 0) }
             expect_execution { s.ws.send(JSON.generate(msg))}.timeout(1).
                 to { have_one_new_sample task.raw_command_port }
         end
@@ -194,8 +228,7 @@ describe OroGen.controldev_websocket.Task do
             s = @first_websocket
             task = @task
             msg = { :axes => [0.1, 0.2, 0.4, 0.5],
-                    :buttons => Array.new(16, 0),
-                    :status => true }
+                    :buttons => Array.new(16, 0) }
             msg[:buttons][6] = 0.3
             msg[:buttons][7] = 0.6
             expected = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
@@ -212,8 +245,7 @@ describe OroGen.controldev_websocket.Task do
             task = @task
             msg = { :axes => Array.new(4, 0),
                     :buttons => [0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0, 0,
-                                 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85],
-                    :status => true }
+                                 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85] }
             expected = [0, 0, 0, 0, 0, 0,
                         1, 1, 1, 1, 1, 1, 1]
             sample = expect_execution { s.ws.send(JSON.generate(msg))}.timeout(1).
@@ -226,12 +258,24 @@ describe OroGen.controldev_websocket.Task do
     end
 
     describe 'write correctly at statistics port' do
+        before do
+            msg = { :test_message => {
+                        :axes => Array.new(4, 0),
+                        :buttons => Array.new(16, 0) }
+                  }
+
+            s = @first_websocket
+            expect_execution{ s.ws.send(JSON.generate(msg)) }.
+                to { achieve { s.received_messages.any? } }
+
+            assert JSON.parse(s.received_messages.pop)["result"]
+        end
+
         it 'just count received to correct message' do
             s = @first_websocket
             task = @task
             msg = { :axes => Array.new(4, 0),
-                    :buttons => Array.new(16, 0),
-                    :status => false }
+                    :buttons => Array.new(16, 0) }
             sample = expect_execution { s.ws.send(JSON.generate(msg)) }.timeout(1).
                 to { have_one_new_sample task.statistics_port }
 
@@ -270,8 +314,7 @@ describe OroGen.controldev_websocket.Task do
             s = @first_websocket
             task = @task
             msg = { :axes => "pine",
-                    :buttons => "apple",
-                    :status => "pineapple" }
+                    :buttons => "apple" }
 
             sample = expect_execution { s.ws.send(JSON.generate(msg))}.timeout(1).
                 to { have_one_new_sample task.statistics_port }
