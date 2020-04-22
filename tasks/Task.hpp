@@ -12,6 +12,8 @@
 #include <thread>
 #include <memory>
 
+#include <json/json.h>
+
 namespace controldev_websocket{
     struct JoystickHandler;
     struct WrapperJSON;
@@ -41,8 +43,8 @@ namespace controldev_websocket{
     std::thread *thread = nullptr;
     std::shared_ptr<JoystickHandler> handler;
     controldev::RawCommand raw_cmd_obj;
-    bool controlling;
     bool updateRawCommand(const char *data);
+    bool getTestMessage(const char *data, Json::Value &msg);
 
     std::vector<Mapping> *axis = nullptr;
     std::vector<ButtonMapping> *button = nullptr;

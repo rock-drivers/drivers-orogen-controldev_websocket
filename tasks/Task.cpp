@@ -8,8 +8,6 @@
 #include <seasocks/WebSocket.h>
 #include <seasocks/Server.h>
 
-#include <json/json.h>
-
 #include <string.h>
 #include <iostream>
 
@@ -23,24 +21,37 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
     Json::Value msg;
     Json::FastWriter fast;
     Statistics statistic;
+    bool is_controlling;
 
     void onConnect(WebSocket *socket) override{
         if (connection != nullptr){
             connection->close();
         }
         connection = socket;
+        is_controlling = false;
     }
     void onData(WebSocket *socket, const char *data) override{
         msg["result"] = false;
         if (connection == socket){
-            ++task->received;
-            msg["result"] = Json::Value(task->updateRawCommand(data));
-            if (msg["result"].asBool() && task->controlling){
-                task->raw_cmd_obj.time = base::Time::now();
-                task->_raw_command.write(task->raw_cmd_obj);
-            }
-            if (!msg["result"].asBool()){
-                ++task->errors;
+            if (is_controlling){
+                ++task->received;
+                msg["result"] = task->updateRawCommand(data);
+                if (msg["result"].asBool()){
+                    task->raw_cmd_obj.time = base::Time::now();
+                    task->_raw_command.write(task->raw_cmd_obj);
+                } else {
+                    ++task->errors;
+                }
+            } else {
+                Json::Value test_msg;
+                if (task->getTestMessage(data, test_msg)){
+                    auto str = fast.write(test_msg);
+                    char *test = new char[str.length() + 1];
+                    std::strcpy (test, str.c_str());
+                    is_controlling = task->updateRawCommand(test);
+                    msg["result"] = is_controlling;
+                    delete test;
+                }
             }
         }
         statistic.received = task->received;
@@ -87,16 +98,13 @@ bool Task::updateRawCommand(const char *data){
         LOG_ERROR_S << "Failed parsing the message, got error: " << errs << std::endl;
         return false;
     }
-    if (!wrapper->jdata.isMember("status") ||
-        !wrapper->jdata.isMember(WrapperJSON::mapFieldName(Mapping::Type::Axis)) ||
+    if (!wrapper->jdata.isMember(WrapperJSON::mapFieldName(Mapping::Type::Axis)) ||
         !wrapper->jdata.isMember(WrapperJSON::mapFieldName(Mapping::Type::Button))) {
         LOG_ERROR_S << "Invalid message, it doesn't contain the required fields.";
         LOG_ERROR_S << std::endl;
         return false;
     }
     try{
-        controlling = wrapper->jdata["status"].asBool();
-
         for (uint i = 0; i < axis->size(); ++i){
             raw_cmd_obj.axisValue.at(i) = wrapper->getValue(axis->at(i).type,
                                                             axis->at(i).index);
@@ -113,6 +121,24 @@ bool Task::updateRawCommand(const char *data){
         LOG_ERROR_S << "Invalid message, got error: " << e.what() << std::endl;
         return false;
     }
+    return true;
+}
+
+bool Task::getTestMessage(const char *data, Json::Value &msg){
+    std::string errs;
+
+    if (!wrapper->reader->parse(data, data+std::strlen(data), &wrapper->jdata, &errs)){
+        LOG_ERROR_S << "Failed parsing the test msg, got error: " << errs << std::endl;
+        return false;
+    }
+
+    if (!wrapper->jdata.isMember("test_message")) {
+        LOG_ERROR_S << "Invalid test msg, it doesn't contain the test_message field.";
+        LOG_ERROR_S << std::endl;
+        return false;
+    }
+
+    msg = wrapper->jdata["test_message"];
     return true;
 }
 
