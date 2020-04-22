@@ -1,5 +1,3 @@
-"use strict";
-// exports.__esModule = true;
 var Status;
 (function (Status) {
     Status["connecting"] = "connecting";
@@ -66,11 +64,22 @@ var GamepadStream = /** @class */ (function () {
     GamepadStream.prototype.gamepad = function () {
         return navigator.getGamepads()[this.gamepad_index];
     };
-    GamepadStream.prototype.sendGamepadMessage = function () {
+    GamepadStream.prototype.buildMessage = function () {
         var msg = { 'axes': this.gamepad().axes,
-            'status': this.getStatus() == Status.controlling,
             'buttons': this.gamepad().buttons.map(function f(b) { return b.value; })
         };
+        return msg;
+    };
+    GamepadStream.prototype.sendGamepadMessage = function () {
+        if (this.getStatus() != Status.controlling)
+            throw "Tryied to send a message when is not controlling";
+        var msg = this.buildMessage();
+        this.websocket.send(JSON.stringify(msg));
+    };
+    GamepadStream.prototype.askControl = function () {
+        if (this.getStatus() != Status.start_control)
+            throw "Tryied to ask control when is not starting the control";
+        var msg = { 'test_message': this.buildMessage() };
         this.websocket.send(JSON.stringify(msg));
     };
     // Do the transitioning between the machine states and update it,
@@ -85,7 +94,7 @@ var GamepadStream = /** @class */ (function () {
                 break;
             case Status.start_control:
                 if (this.gamepad().buttons[this.start_button].value == 1)
-                    this.sendGamepadMessage();
+                    this.askControl();
                 break;
             case Status.controlling:
                 this.sendGamepadMessage();
@@ -100,7 +109,9 @@ var GamepadStream = /** @class */ (function () {
                 this.status = Status.connecting;
                 return this.status;
             case 1:// The connection is open and ready to communicate.
-                if (!this.gamepad().connected)
+                if (this.gamepad() == null)
+                    this.status = Status.gamepad_disconnected;
+                else if (!this.gamepad().connected)
                     this.status = Status.gamepad_disconnected;
                 return this.status;
             default:// The connection is closing, closed or couldn't be opened.
@@ -135,4 +146,3 @@ var GamepadStream = /** @class */ (function () {
     };
     return GamepadStream;
 }());
-// exports["default"] = GamepadStream;

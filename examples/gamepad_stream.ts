@@ -8,7 +8,7 @@ enum Status{
 }
 
 
-export default class GamepadStream {
+class GamepadStream {
     // Tolerance of server failures when processing the messages.
     fail_tolerance: number = 10;
 
@@ -85,11 +85,24 @@ export default class GamepadStream {
         return navigator.getGamepads()[this.gamepad_index];
     }
 
-    sendGamepadMessage(){
+    buildMessage(){
         let msg = { 'axes': this.gamepad().axes,
-                    'status': this.getStatus() == Status.controlling,
                     'buttons': this.gamepad().buttons.map(function f(b){ return b.value })
                   }
+        return msg
+    }
+
+    sendGamepadMessage(){
+        if (this.getStatus() != Status.controlling)
+            throw "Tryied to send a message when is not controlling"
+        let msg = this.buildMessage();
+        this.websocket.send(JSON.stringify(msg));
+    }
+
+    askControl(){
+        if (this.getStatus() != Status.start_control)
+            throw "Tryied to ask control when is not starting the control"
+        let msg = { 'test_message': this.buildMessage() };
         this.websocket.send(JSON.stringify(msg));
     }
 
@@ -107,7 +120,7 @@ export default class GamepadStream {
 
             case Status.start_control:
                 if (this.gamepad().buttons[this.start_button].value == 1)
-                    this.sendGamepadMessage();
+                    this.askControl();
                 break;
 
             case Status.controlling:
@@ -125,7 +138,9 @@ export default class GamepadStream {
                 this.status = Status.connecting;
                 return this.status;
             case 1: // The connection is open and ready to communicate.
-                if (!this.gamepad().connected)
+                if (this.gamepad() == null)
+                    this.status = Status.gamepad_disconnected;
+                else if (!this.gamepad().connected)
                     this.status = Status.gamepad_disconnected;
                 return this.status;
             default: // The connection is closing, closed or couldn't be opened.
