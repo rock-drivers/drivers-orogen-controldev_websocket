@@ -90,11 +90,11 @@ button_map:
 
 At the examples folder has the necessary files to run the component (server) within a bundle and a simple HTML page to run the client GamepadStream object.
 
-Note, the GamepadStream object is defined in (gamepad_stream.ts)[./examples/gamepad_stream.ts] file and then the TypeScript code is 'compiled' using `tsc gamepad_stream.ts` command resulting the (gamepad_stream.js)[./examples/gamepad_stream.js] used at the HTML file.
+Note, the GamepadStream object is defined in [gamepad_stream.ts](./examples/gamepad_stream.ts) file and then the TypeScript code is 'compiled' using `tsc gamepad_stream.ts` command resulting the [gamepad_stream.js](./examples/gamepad_stream.js) used at the HTML file.
 
 To run the server just inside a bundle run (you might have the config file at this bundle):
 ```
-syskit run ../../drivers/orogen/controldev_websocket/examples/run.rb
+syskit run ../../drivers/orogen/controldev_websocket/examples/run.rb -c
 ```
 
-Then, simply open the (stream.html)[examples/stream.html] in your browser, connect a gamepad and enjoy it. To run it from another computer replace the `localhost` in HTML file with the server IP address.
+Then, simply open the [stream.html](examples/stream.html) in your browser, connect a gamepad and enjoy it. To run it from another computer replace the `localhost` in HTML file with the server IP address.
