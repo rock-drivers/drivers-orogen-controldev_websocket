@@ -279,7 +279,7 @@ describe OroGen.controldev_websocket.Task do
             sample = expect_execution { s.ws.send(JSON.generate(msg)) }.timeout(1).
                 to { have_one_new_sample task.statistics_port }
 
-            assert_equal 1, sample.received
+            assert_equal 2, sample.received
 
             assert_equal 0, sample.errors
         end
@@ -292,7 +292,7 @@ describe OroGen.controldev_websocket.Task do
             sample = expect_execution { s.ws.send(msg)}.timeout(1).
                 to { have_one_new_sample task.statistics_port }
 
-            assert sample.received == 1
+            assert_equal 2, sample.received
 
             assert_equal 1, sample.errors
         end
@@ -305,7 +305,7 @@ describe OroGen.controldev_websocket.Task do
             sample = expect_execution { s.ws.send(JSON.generate(msg))}.timeout(1).
                 to { have_one_new_sample task.statistics_port }
 
-            assert sample.received == 1
+            assert_equal 2, sample.received
 
             assert_equal 1, sample.errors
         end
@@ -319,7 +319,7 @@ describe OroGen.controldev_websocket.Task do
             sample = expect_execution { s.ws.send(JSON.generate(msg))}.timeout(1).
                 to { have_one_new_sample task.statistics_port }
 
-            assert sample.received == 1
+            assert_equal 2, sample.received
 
             assert_equal 1, sample.errors
         end
