@@ -16,7 +16,7 @@
 
 namespace controldev_websocket{
     struct JoystickHandler;
-    struct WrapperJSON;
+    struct MessageDecoder;
 
     /*! \class Task
      * \brief The task context provides and requires services. It uses an ExecutionEngine to perform its functions.
@@ -37,18 +37,19 @@ namespace controldev_websocket{
     friend class TaskBase;
     friend struct JoystickHandler;
 
-    WrapperJSON *wrapper = nullptr;
+    MessageDecoder *decoder = nullptr;
 
     seasocks::Server *server = nullptr;
     std::thread *thread = nullptr;
     std::shared_ptr<JoystickHandler> handler;
     controldev::RawCommand raw_cmd_obj;
-    bool updateRawCommand(const char *data);
-    bool getTestMessage(const char *data, Json::Value &msg);
+    bool handleIncomingWebsocketMessage(char const* data);
+    bool updateRawCommand();
 
     std::vector<Mapping> *axis = nullptr;
     std::vector<ButtonMapping> *button = nullptr;
 
+    bool is_controlling = false;
     int errors = 0;
     int received = 0;
 

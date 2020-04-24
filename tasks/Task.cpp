@@ -21,38 +21,21 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
     Json::Value msg;
     Json::FastWriter fast;
     Statistics statistic;
-    bool is_controlling;
 
     void onConnect(WebSocket *socket) override{
         if (connection != nullptr){
             connection->close();
         }
         connection = socket;
-        is_controlling = false;
+        task->is_controlling = false;
     }
     void onData(WebSocket *socket, const char *data) override{
         msg["result"] = false;
-        if (connection == socket){
-            if (is_controlling){
-                ++task->received;
-                msg["result"] = task->updateRawCommand(data);
-                if (msg["result"].asBool()){
-                    task->raw_cmd_obj.time = base::Time::now();
-                    task->_raw_command.write(task->raw_cmd_obj);
-                } else {
-                    ++task->errors;
-                }
-            } else {
-                Json::Value test_msg;
-                if (task->getTestMessage(data, test_msg)){
-                    auto str = fast.write(test_msg);
-                    char *test = new char[str.length() + 1];
-                    std::strcpy (test, str.c_str());
-                    is_controlling = task->updateRawCommand(test);
-                    msg["result"] = is_controlling;
-                    delete test;
-                }
-            }
+        if (connection == socket) {
+            ++task->received;
+            msg["result"] = task->handleIncomingWebsocketMessage(data);
+            // Increment errors count if the result is false, do nothing otherwise
+            task->errors += msg["result"].asBool() ? 0 : 1;
         }
         statistic.received = task->received;
         statistic.errors = task->errors;
@@ -67,17 +50,13 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
     }
 };
 
-struct controldev_websocket::WrapperJSON{
+struct controldev_websocket::MessageDecoder{
     Json::Value jdata;
     Json::CharReaderBuilder rbuilder;
     std::unique_ptr<Json::CharReader> const reader;
 
-    WrapperJSON() : reader(rbuilder.newCharReader()) {
+    MessageDecoder() : reader(rbuilder.newCharReader()) {
 
-    }
-
-    double getValue(Mapping::Type type, int index){
-        return jdata[mapFieldName(type)][index].asDouble();
     }
 
     static std::string mapFieldName(Mapping::Type type){
@@ -89,29 +68,66 @@ struct controldev_websocket::WrapperJSON{
         }
         throw "Failed to get Field Name. The type set is invalid";
     }
+
+    bool parseJSONMessage(char const* data, std::string &errors){
+        return reader->parse(data, data+std::strlen(data), &jdata, &errors);
+    }
+
+    bool validateControlMessage(){
+        if (!jdata.isMember(mapFieldName(Mapping::Type::Axis)) ||
+            !jdata.isMember(mapFieldName(Mapping::Type::Button))) {
+            LOG_ERROR_S << "Invalid message, it doesn't contain the required fields.";
+            LOG_ERROR_S << std::endl;
+            return false;
+        }
+        return true;
+    }
+
+    bool validateAskControlMessage(){
+        if (!jdata.isMember("test_message")) {
+            LOG_ERROR_S << "Invalid test msg, it doesn't contain the test_message field.";
+            LOG_ERROR_S << std::endl;
+            return false;
+        }
+        jdata = jdata["test_message"];
+        return validateControlMessage();
+    }
+
+    double getValue(const Mapping &mapping){
+        return jdata[mapFieldName(mapping.type)][mapping.index].asDouble();
+    }
 };
 
-bool Task::updateRawCommand(const char *data){
+bool Task::handleIncomingWebsocketMessage(char const* data) {
     std::string errs;
-
-    if (!wrapper->reader->parse(data, data+std::strlen(data), &wrapper->jdata, &errs)){
+    if (!decoder->parseJSONMessage(data, errs)) {
         LOG_ERROR_S << "Failed parsing the message, got error: " << errs << std::endl;
         return false;
     }
-    if (!wrapper->jdata.isMember(WrapperJSON::mapFieldName(Mapping::Type::Axis)) ||
-        !wrapper->jdata.isMember(WrapperJSON::mapFieldName(Mapping::Type::Button))) {
-        LOG_ERROR_S << "Invalid message, it doesn't contain the required fields.";
-        LOG_ERROR_S << std::endl;
+
+    auto is_valid = is_controlling ? decoder->validateControlMessage() :
+                                     decoder->validateAskControlMessage();
+    if (!is_valid) {
         return false;
     }
+
+    auto is_filled = updateRawCommand();
+    if (is_filled and is_controlling) {
+        _raw_command.write(raw_cmd_obj);
+    }
+
+    is_controlling = is_controlling ? true : is_filled;
+    return is_filled;
+}
+
+// Fill the Raw Command with the JSON data at decoder.
+bool Task::updateRawCommand(){
     try{
         for (uint i = 0; i < axis->size(); ++i){
-            raw_cmd_obj.axisValue.at(i) = wrapper->getValue(axis->at(i).type,
-                                                            axis->at(i).index);
+            raw_cmd_obj.axisValue.at(i) = decoder->getValue(axis->at(i));
         }
         for (uint i = 0; i < button->size(); ++i){
-            raw_cmd_obj.buttonValue.at(i) = wrapper->getValue(button->at(i).type,
-                                                              button->at(i).index)
+            raw_cmd_obj.buttonValue.at(i) = decoder->getValue(button->at(i))
                                                               > button->at(i).threshold;
         }
 
@@ -121,24 +137,6 @@ bool Task::updateRawCommand(const char *data){
         LOG_ERROR_S << "Invalid message, got error: " << e.what() << std::endl;
         return false;
     }
-    return true;
-}
-
-bool Task::getTestMessage(const char *data, Json::Value &msg){
-    std::string errs;
-
-    if (!wrapper->reader->parse(data, data+std::strlen(data), &wrapper->jdata, &errs)){
-        LOG_ERROR_S << "Failed parsing the test msg, got error: " << errs << std::endl;
-        return false;
-    }
-
-    if (!wrapper->jdata.isMember("test_message")) {
-        LOG_ERROR_S << "Invalid test msg, it doesn't contain the test_message field.";
-        LOG_ERROR_S << std::endl;
-        return false;
-    }
-
-    msg = wrapper->jdata["test_message"];
     return true;
 }
 
@@ -166,7 +164,7 @@ bool Task::configureHook()
     raw_cmd_obj.buttonValue.resize(button->size(), 0);
     raw_cmd_obj.axisValue.resize(axis->size(), 0.0);
 
-    wrapper = new WrapperJSON();
+    decoder = new MessageDecoder();
     auto logger = std::make_shared<PrintfLogger>(Logger::Level::Debug);
     server = new Server (logger);
     handler = std::make_shared<JoystickHandler>();
@@ -208,5 +206,5 @@ void Task::cleanupHook()
     TaskBase::cleanupHook();
     delete server;
     delete thread;
-    delete wrapper;
+    delete decoder;
 }
