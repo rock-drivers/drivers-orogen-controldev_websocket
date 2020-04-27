@@ -27,10 +27,9 @@ var GamepadStream = /** @class */ (function () {
         this.websocket.onclose = function () { self.onClose(); };
         this.websocket.onerror = function (err) { self.onError(err); };
         this.websocket.onmessage = function (msg) { self.onMessage(msg); };
-        var gamepads = navigator.getGamepads();
-        if (gamepads[gamepad_index] === null || !gamepads[gamepad_index].connected)
-            throw "The gamepad provided is not available";
         this.gamepad_index = gamepad_index;
+        if (!this.isGamepadConnected())
+            throw "The gamepad provided is not available";
     }
     GamepadStream.getFirstValidGamepad = function (url) {
         console.log("Trying to find a gamepad...");
@@ -64,6 +63,12 @@ var GamepadStream = /** @class */ (function () {
     GamepadStream.prototype.gamepad = function () {
         return navigator.getGamepads()[this.gamepad_index];
     };
+    GamepadStream.prototype.isGamepadConnected = function () {
+        if (this.gamepad() === null) {
+            return false;
+        }
+        return this.gamepad().connected;
+    };
     GamepadStream.prototype.buildMessage = function () {
         var msg = { 'axes': this.gamepad().axes,
             'buttons': this.gamepad().buttons.map(function f(b) { return b.value; })
@@ -72,13 +77,13 @@ var GamepadStream = /** @class */ (function () {
     };
     GamepadStream.prototype.sendGamepadMessage = function () {
         if (this.getStatus() != Status.controlling)
-            throw "Tryied to send a message when is not controlling";
+            throw "Tried to send a message when is not controlling";
         var msg = this.buildMessage();
         this.websocket.send(JSON.stringify(msg));
     };
     GamepadStream.prototype.askControl = function () {
         if (this.getStatus() != Status.start_control)
-            throw "Tryied to ask control when is not starting the control";
+            throw "Tried to ask control when is not starting the control";
         var msg = { 'test_message': this.buildMessage() };
         this.websocket.send(JSON.stringify(msg));
     };
@@ -89,7 +94,7 @@ var GamepadStream = /** @class */ (function () {
                 console.log("waiting connection");
                 break;
             case Status.gamepad_disconnected:
-                if (this.gamepad().connected)
+                if (this.isGamepadConnected())
                     this.status = Status.start_control;
                 break;
             case Status.start_control:
@@ -109,14 +114,12 @@ var GamepadStream = /** @class */ (function () {
                 this.status = Status.connecting;
                 return this.status;
             case 1:// The connection is open and ready to communicate.
-                if (this.gamepad() == null)
-                    this.status = Status.gamepad_disconnected;
-                else if (!this.gamepad().connected)
+                if (!this.isGamepadConnected())
                     this.status = Status.gamepad_disconnected;
                 return this.status;
             default:// The connection is closing, closed or couldn't be opened.
                 this.status = Status.disconnected;
-                return Status.disconnected;
+                return this.status;
         }
     };
     GamepadStream.prototype.onOpen = function () {
@@ -141,7 +144,9 @@ var GamepadStream = /** @class */ (function () {
             }
         }
         else {
-            this.status = Status.controlling;
+            this.fail_count = 0;
+            if (this.status == Status.start_control || this.status == Status.connection_error)
+                this.status = Status.controlling;
         }
     };
     return GamepadStream;
