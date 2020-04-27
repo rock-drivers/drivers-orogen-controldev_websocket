@@ -43,7 +43,7 @@ namespace controldev_websocket{
     std::thread *thread = nullptr;
     std::shared_ptr<JoystickHandler> handler;
     controldev::RawCommand raw_cmd_obj;
-    bool handleIncomingWebsocketMessage(char const* data);
+    bool handleIncomingWebsocketMessage(char const* data, WebSocket *connection);
     bool updateRawCommand();
 
     std::vector<Mapping> *axis = nullptr;

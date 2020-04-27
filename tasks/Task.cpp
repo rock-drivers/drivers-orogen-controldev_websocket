@@ -30,13 +30,16 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
         task->is_controlling = false;
     }
     void onData(WebSocket *socket, const char *data) override{
-        msg["result"] = false;
-        if (connection == socket) {
-            ++task->received;
-            msg["result"] = task->handleIncomingWebsocketMessage(data);
-            // Increment errors count if the result is false, do nothing otherwise
-            task->errors += msg["result"].asBool() ? 0 : 1;
+        if (connection != socket) {
+            LOG_WARN_S << "Received message from inactive connection" << std::endl;
+            return;
         }
+
+        ++task->received;
+        bool result = task->handleIncomingWebsocketMessage(data, socket);
+        msg["result"] = result;
+        // Increment errors count if the result is false, do nothing otherwise
+        task->errors += result ? 0 : 1;
         statistic.received = task->received;
         statistic.errors = task->errors;
         statistic.time = base::Time::now();
@@ -98,26 +101,48 @@ struct controldev_websocket::MessageDecoder{
     }
 };
 
-bool Task::handleIncomingWebsocketMessage(char const* data) {
+bool Task::handleIncomingWebsocketMessage(char const* data, WebSocket *connection) {
     std::string errs;
     if (!decoder->parseJSONMessage(data, errs)) {
         LOG_ERROR_S << "Failed parsing the message, got error: " << errs << std::endl;
         return false;
     }
 
-    auto is_valid = is_controlling ? decoder->validateControlMessage() :
-                                     decoder->validateAskControlMessage();
-    if (!is_valid) {
+    if (is_controlling) {
+        return handleControlMessage();
+    }
+
+    if (!handleAskControlMessage()){
+        connection->close();
         return false;
     }
 
-    auto is_filled = updateRawCommand();
-    if (is_filled and is_controlling) {
-        _raw_command.write(raw_cmd_obj);
+    return true;
+}
+
+bool Task::handleControlMessage() {
+    if (!decoder->validateControlMessage()){
+        return false;
     }
 
-    is_controlling = is_controlling ? true : is_filled;
-    return is_filled;
+    if (!updateRawCommand()){
+        return false;
+    }
+    _raw_command.write(raw_cmd_obj);
+    return true;
+}
+
+bool Task::handleAskControlMessage() {
+    if (!decoder->validateAskControlMessage()){
+        return false;
+    }
+
+    if (!updateRawCommand()){
+        return false;
+    }
+
+    is_controlling = true;
+    return true;
 }
 
 // Fill the Raw Command with the JSON data at decoder.
