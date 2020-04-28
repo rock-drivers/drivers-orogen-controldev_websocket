@@ -6,9 +6,10 @@ Finally, for each received message the server (task) sends a message back to its
   </description>
   <author>Henrique Ferreira Junior/henrique.ferreira@tidewise.io</author>
   <license></license>
-  <depend package="base/cmake" />
-  
-  <depend package="controldev" />
-  <depend package="jsoncpp" />
-  <depend package="seasocks"/>
+
+  <depend package="drivers/controldev"/>
+  <depend package="tools/seasocks"/>
+  <depend package="base/logging"/>
+
+  <test_depend name="tools/syskit" />
 </package>

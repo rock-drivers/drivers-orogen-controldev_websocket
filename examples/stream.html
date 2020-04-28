@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Example streaming gamepad</title>
+        <script src="gamepad_stream.js"></script>
+    </head>
+    <body>
+        <p>This is an example of a simple HTML page streaming the gamepad.</p>
+        <div id="code">
+
+        </div>
+    </body>
+    <script>
+        function getContent(){
+            if (gamepad_stream == undefined)
+                return "GamepadStream not initialized.";
+            return gamepad_stream.getStatus();
+        }
+
+        var gamepad_stream;
+        window.addEventListener('gamepadconnected', function (e) {
+            console.log(e);
+            gamepad_stream = new GamepadStream('ws://localhost:58000/ws', e.gamepad.index);
+            gamepad_stream.start();
+        })
+        function init(){
+            setInterval(function() {
+                document.getElementById("code").innerHTML = "GamepadStream status: " + getContent()
+            }, 500);
+        }
+        window.onload = init;
+    </script>
+</html>

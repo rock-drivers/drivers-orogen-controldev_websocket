@@ -1,15 +1,37 @@
 #ifndef controldev_websocket_TYPES_HPP
 #define controldev_websocket_TYPES_HPP
 
-/* If you need to define types specific to your oroGen components, define them
- * here. Required headers must be included explicitly
- *
- * However, it is common that you will only import types from your library, in
- * which case you do not need this file
- */
+#include <string>
+#include <base/Time.hpp>
 
-namespace controldev_websocket {
-}
+namespace controldev_websocket
+{
+    struct Mapping
+    {
+        enum Type {
+            Axis = 0,
+            Button = 1
+        };
+
+        /**
+         * Enum to represent an axis or a button.
+         */
+        Type type;
+
+        int index;
+    };
+
+    struct ButtonMapping: public Mapping
+    {
+        double threshold;
+    };
+
+    struct Statistics
+    {
+        int errors;
+        int received;
+        base::Time time;
+    };
+} // end namespace controldev_websocket
 
 #endif
-

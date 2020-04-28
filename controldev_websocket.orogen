@@ -1,14 +1,20 @@
-name "controldev_websocket"
+name 'controldev_websocket'
 
 using_library 'controldev'
+using_library 'base-logging'
 using_library 'jsoncpp', typekit: false
 
-import_types_from "std"
-import_types_from "base"
+import_types_from 'base'
+import_types_from 'controldev/RawCommand.hpp'
+import_types_from 'controldev_websocketTypes.hpp'
 
-task_context "Task" do
+task_context 'Task' do
     property 'port', 'uint16_t', 58000
+    property 'axis_map', '/std/vector</controldev_websocket/Mapping>'
+    property 'button_map', '/std/vector</controldev_websocket/ButtonMapping>'
+
     output_port 'raw_command', 'controldev/RawCommand'
+    output_port 'statistics', 'controldev_websocket/Statistics'
 
     periodic 0.1
 end
