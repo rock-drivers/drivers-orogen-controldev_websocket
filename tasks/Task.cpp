@@ -5,7 +5,6 @@
 #include <base-logging/Logging.hpp>
 
 #include <seasocks/PrintfLogger.h>
-#include <seasocks/WebSocket.h>
 #include <seasocks/Server.h>
 
 #include <string.h>
