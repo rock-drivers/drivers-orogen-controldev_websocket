@@ -148,22 +148,22 @@ bool Task::handleAskControlMessage() {
 
 // Fill the Raw Command with the JSON data at decoder.
 bool Task::updateRawCommand(){
-    try{
-        for (uint i = 0; i < axis->size(); ++i){
+    try {
+        for (uint i = 0; i < axis->size(); ++i) {
             raw_cmd_obj.axisValue.at(i) = decoder->getValue(axis->at(i));
         }
         for (uint i = 0; i < button->size(); ++i){
-            raw_cmd_obj.buttonValue.at(i) = decoder->getValue(button->at(i))
-                                                              > button->at(i).threshold;
+            raw_cmd_obj.buttonValue.at(i) =
+                decoder->getValue(button->at(i)) > button->at(i).threshold;
         }
-
-    // A failure here means that the client sent a bad message or the mapping isn't good.
-    // Just inform the client: return false.
-    } catch (const std::exception &e){
+        return true;
+    }
+    // A failure here means that the client sent a bad message or the
+    // mapping isn't good. Just inform the client: return false.
+    catch (const std::exception &e) {
         LOG_ERROR_S << "Invalid message, got error: " << e.what() << std::endl;
         return false;
     }
-    return true;
 }
 
 Task::Task(std::string const& name, TaskCore::TaskState initial_state)
