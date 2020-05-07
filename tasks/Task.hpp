@@ -35,27 +35,27 @@ namespace controldev_websocket{
      */
     class Task : public TaskBase
     {
-    friend class TaskBase;
-    friend struct JoystickHandler;
+        friend class TaskBase;
+        friend struct JoystickHandler;
 
-    MessageDecoder *decoder = nullptr;
+        MessageDecoder *decoder = nullptr;
 
-    seasocks::Server *server = nullptr;
-    std::thread *thread = nullptr;
-    std::shared_ptr<JoystickHandler> handler;
-    controldev::RawCommand raw_cmd_obj;
-    bool handleIncomingWebsocketMessage(char const* data, seasocks::WebSocket *connection);
-    bool updateRawCommand();
-    bool handleAskControlMessage();
-    bool handleControlMessage();
+        seasocks::Server *server = nullptr;
+        std::thread *thread = nullptr;
+        std::shared_ptr<JoystickHandler> handler;
+        controldev::RawCommand raw_cmd_obj;
+        bool handleIncomingWebsocketMessage(char const* data, seasocks::WebSocket *connection);
+        bool updateRawCommand();
+        bool handleAskControlMessage();
+        bool handleControlMessage();
 
 
-    std::vector<Mapping> *axis = nullptr;
-    std::vector<ButtonMapping> *button = nullptr;
+        std::vector<Mapping> *axis = nullptr;
+        std::vector<ButtonMapping> *button = nullptr;
 
-    bool is_controlling = false;
-    int errors = 0;
-    int received = 0;
+        bool is_controlling = false;
+        int errors = 0;
+        int received = 0;
 
     public:
         /** TaskContext constructor for Task
