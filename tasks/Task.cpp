@@ -6,9 +6,11 @@
 
 #include <seasocks/PrintfLogger.h>
 #include <seasocks/Server.h>
+#include <seasocks/WebSocket.h>
 
 #include <string.h>
 #include <iostream>
+#include <json/json.h>
 
 using namespace controldev_websocket;
 using namespace controldev;

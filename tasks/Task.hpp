@@ -3,17 +3,17 @@
 #ifndef CONTROLDEV_WEBSOCKET_TASK_TASK_HPP
 #define CONTROLDEV_WEBSOCKET_TASK_TASK_HPP
 
-#include "../controldev_websocketTypes.hpp"
 #include "controldev_websocket/TaskBase.hpp"
 #include <controldev/RawCommand.hpp>
 
 #include <vector>
-#include <seasocks/Server.h>
-#include <seasocks/WebSocket.h>
 #include <thread>
 #include <memory>
 
-#include <json/json.h>
+namespace seasocks {
+    class WebSocket;
+    class Server;
+}
 
 namespace controldev_websocket{
     struct JoystickHandler;
