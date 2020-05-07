@@ -23,13 +23,13 @@ namespace controldev_websocket
 
     struct ButtonMapping: public Mapping
     {
-        double threshold;
+        double threshold = 0.5;
     };
 
     struct Statistics
     {
-        int errors;
-        int received;
+        int errors = 0;
+        int received = 0;
         base::Time time;
     };
 } // end namespace controldev_websocket
