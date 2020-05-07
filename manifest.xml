@@ -12,4 +12,5 @@ Finally, for each received message the server (task) sends a message back to its
   <depend package="base/logging"/>
 
   <test_depend name="tools/syskit" />
+  <test_depend name="kontena-websocket-client" />
 </package>
