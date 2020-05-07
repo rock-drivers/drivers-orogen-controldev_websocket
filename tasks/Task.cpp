@@ -112,13 +112,9 @@ bool Task::handleIncomingWebsocketMessage(char const* data, WebSocket *connectio
     if (is_controlling) {
         return handleControlMessage();
     }
-
-    if (!handleAskControlMessage()){
-        connection->close();
-        return false;
+    else {
+        return handleAskControlMessage();
     }
-
-    return true;
 }
 
 bool Task::handleControlMessage() {
