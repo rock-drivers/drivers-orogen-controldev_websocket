@@ -6,9 +6,11 @@
 
 #include <seasocks/PrintfLogger.h>
 #include <seasocks/Server.h>
+#include <seasocks/WebSocket.h>
 
 #include <string.h>
 #include <iostream>
+#include <json/json.h>
 
 using namespace controldev_websocket;
 using namespace controldev;
@@ -96,7 +98,14 @@ struct controldev_websocket::MessageDecoder{
     }
 
     double getValue(const Mapping &mapping){
-        return jdata[mapFieldName(mapping.type)][mapping.index].asDouble();
+        auto const& field = jdata[mapFieldName(mapping.type)];
+        if (!field.isValidIndex(mapping.index)) {
+            throw std::out_of_range(
+                "incoming raw command does not have a field " +
+                std::to_string(mapping.index) + "in " + mapFieldName(mapping.type)
+            );
+        }
+        return field[mapping.index].asDouble();
     }
 };
 
@@ -110,13 +119,9 @@ bool Task::handleIncomingWebsocketMessage(char const* data, WebSocket *connectio
     if (is_controlling) {
         return handleControlMessage();
     }
-
-    if (!handleAskControlMessage()){
-        connection->close();
-        return false;
+    else {
+        return handleAskControlMessage();
     }
-
-    return true;
 }
 
 bool Task::handleControlMessage() {
@@ -146,22 +151,22 @@ bool Task::handleAskControlMessage() {
 
 // Fill the Raw Command with the JSON data at decoder.
 bool Task::updateRawCommand(){
-    try{
-        for (uint i = 0; i < axis->size(); ++i){
+    try {
+        for (uint i = 0; i < axis->size(); ++i) {
             raw_cmd_obj.axisValue.at(i) = decoder->getValue(axis->at(i));
         }
         for (uint i = 0; i < button->size(); ++i){
-            raw_cmd_obj.buttonValue.at(i) = decoder->getValue(button->at(i))
-                                                              > button->at(i).threshold;
+            raw_cmd_obj.buttonValue.at(i) =
+                decoder->getValue(button->at(i)) > button->at(i).threshold;
         }
-
-    // A failure here means that the client sent a bad message or the mapping isn't good.
-    // Just inform the client: return false.
-    } catch (const std::exception &e){
+        return true;
+    }
+    // A failure here means that the client sent a bad message or the
+    // mapping isn't good. Just inform the client: return false.
+    catch (const std::exception &e) {
         LOG_ERROR_S << "Invalid message, got error: " << e.what() << std::endl;
         return false;
     }
-    return true;
 }
 
 Task::Task(std::string const& name, TaskCore::TaskState initial_state)

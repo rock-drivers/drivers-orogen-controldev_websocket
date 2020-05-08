@@ -1,38 +1,21 @@
 # frozen_string_literal: true
 
-require 'kontena-websocket-client'
-require 'json'
+require "kontena-websocket-client"
+require "json"
 
-using_task_library 'controldev_websocket'
-
-import_types_from 'controldev_websocket'
-
-WebsocketStruct = Concurrent::MutableStruct.new :ws,
-                  :received_messages, :current_state, :has_error
-
-def websocket_connect(state)
-    Kontena::Websocket::Client.connect(@url) do |ws|
-        state.ws = ws
-        state.current_state = :open
-
-        ws.read do |message|
-            state.received_messages.append(message)
-        end
-    end
-rescue Kontena::Websocket::CloseError
-    state.current_state = :closed
-rescue Kontena::Websocket::Error
-    state.has_error = true
-end
+using_task_library "controldev_websocket"
 
 describe OroGen.controldev_websocket.Task do
     run_live
 
+    attr_reader :task
+    attr_reader :websocket
+
     before do
         @task = task = syskit_deploy(
-            OroGen.controldev_websocket.Task.deployed_as('websocket')
+            OroGen.controldev_websocket.Task.deployed_as("websocket")
         )
-        task.properties.port = 65432
+        task.properties.port = 65_432
         task.properties.axis_map = [
             Types.controldev_websocket.Mapping.new(index: 0, type: :Axis),
             Types.controldev_websocket.Mapping.new(index: 1, type: :Axis),
@@ -42,306 +25,325 @@ describe OroGen.controldev_websocket.Task do
             Types.controldev_websocket.Mapping.new(index: 7, type: :Button)
         ]
 
-        thr = 0.5
-        task.properties.button_map = [
-            Types.controldev_websocket.ButtonMapping.new(index: 0, type: :Button, threshold: thr),
-            Types.controldev_websocket.ButtonMapping.new(index: 1, type: :Button, threshold: thr),
-            Types.controldev_websocket.ButtonMapping.new(index: 2, type: :Button, threshold: thr),
-            Types.controldev_websocket.ButtonMapping.new(index: 3, type: :Button, threshold: thr),
-            Types.controldev_websocket.ButtonMapping.new(index: 4, type: :Button, threshold: thr),
-            Types.controldev_websocket.ButtonMapping.new(index: 5, type: :Button, threshold: thr),
-            Types.controldev_websocket.ButtonMapping.new(index: 8, type: :Button, threshold: thr),
-            Types.controldev_websocket.ButtonMapping.new(index: 9, type: :Button, threshold: thr),
-            Types.controldev_websocket.ButtonMapping.new(index: 10, type: :Button, threshold: thr),
-            Types.controldev_websocket.ButtonMapping.new(index: 11, type: :Button, threshold: thr),
-            Types.controldev_websocket.ButtonMapping.new(index: 12, type: :Button, threshold: thr),
-            Types.controldev_websocket.ButtonMapping.new(index: 13, type: :Button, threshold: thr),
-            Types.controldev_websocket.ButtonMapping.new(index: 14, type: :Button, threshold: thr)
-        ]
+        task.properties.button_map =
+            ((0..5).to_a + (8..14).to_a).map do |i|
+                Types.controldev_websocket.ButtonMapping
+                     .new(index: i, type: :Button, threshold: 0.5)
+            end
 
-        @url = 'ws://localhost:65432/ws'
+        @url = "ws://localhost:65432/ws"
+        syskit_configure_and_start(task)
 
-        syskit_configure(task)
-
-        expect_execution { task.start! }.
-            to { emit task.start_event}
-
-        s = @first_websocket = WebsocketStruct.new(nil, [], :pending, false)
-        expect_execution {
-                Thread.new { websocket_connect(s) }
-            }.
-            to { achieve {s.current_state == :open} }
+        @websocket_created = []
+        @websocket = websocket_create
     end
 
     after do
-        if (@first_websocket.current_state != :closed)
-            # close the connection cleanly
-            s = @first_websocket
-            expect_execution { s.ws.close(1000) }.
-            to { achieve { s.current_state  == :closed } }
-        end
-
-        assert !@first_websocket.has_error
-
-        task = @task
-        expect_execution { task.stop! }.
-            to { emit task.stop_event}
-    end
-
-    describe 'server accept first connection' do
-        it 'connection is still open' do
-            assert_equal :open, @first_websocket.current_state
-        end
-
-        it 'connection didn\'t failed' do
-            assert !@first_websocket.has_error
+        @websocket_created.each do |s|
+            s.ws.close(10) if s.ws.connected?
+            flunk("connection thread failed to quit") unless s.connection_thread.join(10)
         end
     end
 
-    describe 'server closes first connection when accepting second' do
+    it "accepts a first connection" do
+        assert websocket_running?(@websocket)
+    end
+
+    describe "the behavior on new connections" do
         before do
-            s = @second_websocket = WebsocketStruct.new(nil, [], :pending, false)
-            expect_execution {
-                    Thread.new { websocket_connect(s) }
-                }.
-                to { achieve {s.current_state == :open} }
+            @second_websocket = websocket_create
         end
 
-        after do
-            # close the connection cleanly
-            s = @second_websocket
-            expect_execution { s.ws.close(1000) }.
-            to { achieve { s.current_state  == :closed } }
-
-            assert !@second_websocket.has_error
+        it "closes the first connection cleanly" do
+            assert_websocket_closes_cleanly(@websocket)
         end
 
-        it 'first connection is closed' do
-            s = @first_websocket
-            expect_execution.to { achieve { s.current_state  == :closed } }
-        end
-
-        it 'second connection is still open' do
-            assert_equal :open, @second_websocket.current_state
-        end
-
-        it 'both connection didn\'t failed' do
-            assert !@first_websocket.has_error and !@second_websocket.has_error
+        it "accepts the second connection" do
+            assert websocket_running?(@second_websocket)
         end
     end
 
-    describe 'server response is correct' do
-        it 'didn\'t response any message before receiving one' do
-            assert !@first_websocket.received_messages.any?
+    describe "server response is correct" do
+        it "does not send a message before receiving one" do
+            sleep 0.5
+            refute websocket_has_messages?(@websocket)
         end
 
-        it 'responses false to wrong messages' do
-            s = @first_websocket
-            expect_execution{ s.ws.send('pineapple') }.
-                to { achieve { s.received_messages.any? } }
-
-            assert !JSON.parse(s.received_messages.pop)["result"]
+        it "rejects invalid first messages" do
+            websocket_send @websocket, "pineapple"
+            message = assert_websocket_receives_message(@websocket)
+            refute message.fetch("result")
         end
 
-        it 'responses false to correct message when is not controlling' do
-            msg = { :axes => Array.new(4, 0),
-                    :buttons => Array.new(16, 0) }
-
-            s = @first_websocket
-            expect_execution{ s.ws.send(JSON.generate(msg)) }.
-                to { achieve { s.received_messages.any? } }
-
-            assert !JSON.parse(s.received_messages.pop)["result"]
+        it "responds false to a correct control message received before "\
+           "a valid handshake message" do
+            msg = { axes: Array.new(4, 0), buttons: Array.new(16, 0) }
+            websocket_send @websocket, msg
+            message = assert_websocket_receives_message(@websocket)
+            refute message.fetch("result")
         end
 
-        it 'responses true to correct messages' do
-            msg = { :test_message => {
-                        :axes => Array.new(4, 0),
-                        :buttons => Array.new(16, 0) }
-                  }
+        it "does not switch to control mode if the received message is not "\
+           "a handshake" do
+            msg = { axes: Array.new(4, 0), buttons: Array.new(16, 0) }
+            websocket_send @websocket, msg
+            assert_websocket_receives_message(@websocket)
+            websocket_send @websocket, msg
+            message = assert_websocket_receives_message(@websocket)
+            refute message.fetch("result")
+        end
 
-            s = @first_websocket
-            expect_execution{ s.ws.send(JSON.generate(msg)) }.
-                to { achieve { s.received_messages.any? } }
-
-            assert JSON.parse(s.received_messages.pop)["result"]
-
-            msg = { :axes => Array.new(4, 0),
-                    :buttons => Array.new(16, 0) }
-
-            s = @first_websocket
-            expect_execution{ s.ws.send(JSON.generate(msg)) }.
-                to { achieve { s.received_messages.any? } }
-
-            assert JSON.parse(s.received_messages.pop)["result"]
+        it "replies to a valid hanshake messages" do
+            msg = { test_message: { axes: Array.new(4, 0), buttons: Array.new(16, 0) } }
+            websocket_send @websocket, msg
+            message = assert_websocket_receives_message(@websocket)
+            assert message.fetch("result")
         end
     end
 
-    describe "server doesn't write at the port correctely" do
-        it 'when receiving nothing' do
-            task = @task
-            expect_execution.
-                to { have_no_new_sample task.raw_command_port, at_least_during: 1.0 }
+    describe "the raw command output on invalid JSON input" do
+        it "does not send a message when there is no new JSON input" do
+            expect_execution
+                .to { have_no_new_sample task.raw_command_port, at_least_during: 1.0 }
         end
 
-        it 'when receiving wrong messages' do
-            s = @first_websocket
-            task = @task
-            expect_execution { s.ws.send('pineapple') }.
-                to { have_no_new_sample task.raw_command_port, at_least_during: 1.0 }
+        it "rejects invalid JSON" do
+            websocket_send websocket, "pineapple"
+            message = assert_websocket_receives_message(@websocket)
+            refute message.fetch("result")
         end
 
-        it 'when not controlling' do
-            s = @first_websocket
-            task = @task
-            msg = { :axes => Array.new(4, 0),
-                    :buttons => Array.new(16, 0) }
-            expect_execution { s.ws.send(JSON.generate(msg)) }.
-                to { have_no_new_sample task.raw_command_port, at_least_during: 1.0 }
+        it "rejects valid JSON that is not the expected handshake schema" do
+            websocket_send websocket, {}
+            message = assert_websocket_receives_message(@websocket)
+            refute message.fetch("result")
+        end
+
+        it "rejects a valid control message while the handshake was expected" do
+            msg = { axes: Array.new(4, 0), buttons: Array.new(16, 0) }
+            websocket_send websocket, msg
+            message = assert_websocket_receives_message(@websocket)
+            refute message.fetch("result")
+        end
+
+        it "rejects invalid JSON after a valid handshake" do
+            msg = { test_message: { axes: Array.new(4, 0), buttons: Array.new(16, 0) } }
+            websocket_send websocket, msg
+
+            websocket_send websocket, "pineapple"
+            message = assert_websocket_receives_message(@websocket)
+            refute message.fetch("result")
+        end
+
+        it "rejects a valid handshake message during the control phase" do
+            msg = { test_message: { axes: Array.new(4, 0), buttons: Array.new(16, 0) } }
+            websocket_send websocket, msg
+            assert_websocket_receives_message(@websocket)
+            websocket_send websocket, msg
+            message = assert_websocket_receives_message(@websocket)
+            refute message.fetch("result")
+        end
+
+        it "rejects an invalid control message after a valid handshake" do
+            msg = { test_message: { axes: Array.new(4, 0), buttons: Array.new(16, 0) } }
+            websocket_send websocket, msg
+
+            msg = { axes: Array.new(2, 0), buttons: Array.new(5, 0) }
+            websocket_send websocket, msg
+            message = assert_websocket_receives_message(@websocket)
+            refute message.fetch("result")
         end
     end
 
-    describe "server write at the port correctely" do
+    describe "the component's nominal behavior" do
         before do
-            msg = { :test_message => {
-                        :axes => Array.new(4, 0),
-                        :buttons => Array.new(16, 0) }
-                  }
-
-            s = @first_websocket
-            expect_execution{ s.ws.send(JSON.generate(msg)) }.
-                to { achieve { s.received_messages.any? } }
-
-            assert JSON.parse(s.received_messages.pop)["result"]
+            msg = { test_message: { axes: Array.new(4, 0), buttons: Array.new(16, 0) } }
+            websocket_send @websocket, msg
+            message = assert_websocket_receives_message(@websocket)
+            assert message.fetch("result")
         end
 
-        it 'when is controlling' do
-            s = @first_websocket
-            task = @task
-            msg = { :axes => Array.new(4, 0),
-                    :buttons => Array.new(16, 0) }
-            expect_execution { s.ws.send(JSON.generate(msg))}.timeout(1).
-                to { have_one_new_sample task.raw_command_port }
+        it "write raw command samples from JSON messages" do
+            msg = { axes: Array.new(4, 0), buttons: Array.new(16, 0) }
+            expect_execution { websocket_send websocket, msg }
+                .timeout(1)
+                .to { have_one_new_sample task.raw_command_port }
         end
 
-        it 'do correct axis conversion' do
-            s = @first_websocket
-            task = @task
-            msg = { :axes => [0.1, 0.2, 0.4, 0.5],
-                    :buttons => Array.new(16, 0) }
+        it "does correct axis conversion" do
+            msg = { axes: [0.1, 0.2, 0.4, 0.5], buttons: Array.new(16, 0) }
             msg[:buttons][6] = 0.3
             msg[:buttons][7] = 0.6
+
             expected = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
-            sample = expect_execution { s.ws.send(JSON.generate(msg))}.timeout(1).
-                to { have_one_new_sample task.raw_command_port }
+            sample =
+                expect_execution { websocket_send websocket, msg }
+                .timeout(1).to { have_one_new_sample task.raw_command_port }
 
             assert_values_near Array.new(13, 0), sample.buttonValue.to_a
-
             assert_values_near expected, sample.axisValue.to_a
         end
 
-        it 'do correct button conversion' do
-            s = @first_websocket
-            task = @task
-            msg = { :axes => Array.new(4, 0),
-                    :buttons => [0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0, 0,
-                                 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85] }
+        it "does correct button conversion" do
+            msg = {
+                axes: Array.new(4, 0),
+                buttons: [0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0, 0,
+                          0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85]
+            }
             expected = [0, 0, 0, 0, 0, 0,
                         1, 1, 1, 1, 1, 1, 1]
-            sample = expect_execution { s.ws.send(JSON.generate(msg))}.timeout(1).
-                to { have_one_new_sample task.raw_command_port }
+            sample =
+                expect_execution { websocket_send websocket, msg }
+                .timeout(1)
+                .to { have_one_new_sample task.raw_command_port }
 
             assert_values_near Array.new(6, 0), sample.axisValue.to_a
-
             assert_values_near expected, sample.buttonValue.to_a
         end
     end
 
-    describe 'write correctly at statistics port' do
+    describe "the statistics" do
         before do
-            msg = { :test_message => {
-                        :axes => Array.new(4, 0),
-                        :buttons => Array.new(16, 0) }
-                  }
-
-            s = @first_websocket
-            expect_execution{ s.ws.send(JSON.generate(msg)) }.
-                to { achieve { s.received_messages.any? } }
-
-            assert JSON.parse(s.received_messages.pop)["result"]
+            msg = { test_message: { axes: Array.new(4, 0), buttons: Array.new(16, 0) } }
+            websocket_send @websocket, msg
+            message = assert_websocket_receives_message(@websocket)
+            assert message.fetch("result")
         end
 
-        it 'just count received to correct message' do
-            s = @first_websocket
-            task = @task
-            msg = { :axes => Array.new(4, 0),
-                    :buttons => Array.new(16, 0) }
-            sample = expect_execution { s.ws.send(JSON.generate(msg)) }.timeout(1).
-                to { have_one_new_sample task.statistics_port }
+        it "counts the number of correct messages" do
+            msg = { axes: Array.new(4, 0), buttons: Array.new(16, 0) }
+            sample = expect_execution { websocket_send websocket, msg }
+                     .timeout(1).to { have_one_new_sample task.statistics_port }
 
             assert_equal 2, sample.received
-
             assert_equal 0, sample.errors
         end
 
-        it 'count error parsing the message' do
-            s = @first_websocket
-            task = @task
-            msg = 'pineapple'
-
-            sample = expect_execution { s.ws.send(msg)}.timeout(1).
-                to { have_one_new_sample task.statistics_port }
+        it "count invalid JSON input" do
+            sample = expect_execution { websocket_send websocket, "pineapple" }
+                     .timeout(1).to { have_one_new_sample task.statistics_port }
 
             assert_equal 2, sample.received
-
             assert_equal 1, sample.errors
         end
 
-        it 'count error when message does not contains required fields' do
-            s = @first_websocket
-            task = @task
-            msg = { :pine => 'apple' }
-
-            sample = expect_execution { s.ws.send(JSON.generate(msg))}.timeout(1).
-                to { have_one_new_sample task.statistics_port }
+        it "count messages that are missing expected fields" do
+            msg = { pine: "apple" }
+            sample = expect_execution { websocket_send websocket, msg }
+                     .timeout(1).to { have_one_new_sample task.statistics_port }
 
             assert_equal 2, sample.received
-
             assert_equal 1, sample.errors
         end
 
-        it 'count error when message fields are not correct' do
-            s = @first_websocket
-            task = @task
-            msg = { :axes => "pine",
-                    :buttons => "apple" }
-
-            sample = expect_execution { s.ws.send(JSON.generate(msg))}.timeout(1).
-                to { have_one_new_sample task.statistics_port }
+        it "count messages whose expected fields don't have the expected values" do
+            msg = { axes: "pine", buttons: ["apple"] }
+            sample = expect_execution { websocket_send websocket, msg }
+                     .timeout(1).to { have_one_new_sample task.statistics_port }
 
             assert_equal 2, sample.received
-
             assert_equal 1, sample.errors
         end
     end
-end
 
-# Helper that allows compating values within a recursive hash (i.e. JSON doc)
-def assert_values_near(expected, actual, tolerance: 1e-4)
-    if expected.length != actual.length
-        flunk("expected length #{expected.length}, got #{actual.length}")
+    def websocket_state_struct
+        @websocket_state_struct ||= Concurrent::MutableStruct.new(
+            :ws, :received_messages, :connection_thread
+        )
     end
 
-    expected.each_index do |ind|
-        value = expected[ind]
-        v = actual[ind]
-        if value.kind_of?(Numeric)
-            unless v.kind_of?(Numeric)
-                flunk("expected #{v.inspect} to be a number")
+    def websocket_running?(state)
+        state.connection_thread.alive?
+    end
+
+    def websocket_success?(state)
+        return false if websocket_running?(state)
+
+        begin
+            state.connection_thread.value
+            true
+        rescue RuntimeError
+            false
+        end
+    end
+
+    def websocket_send(state, msg)
+        msg = JSON.generate(msg) unless msg.respond_to?(:to_str)
+        state.ws.send(msg)
+    end
+
+    def websocket_has_messages?(state)
+        !state.received_messages.empty?
+    end
+
+    def assert_websocket_closes_cleanly(state, timeout: 3)
+        deadline = Time.now + timeout
+        while Time.now < deadline
+            return unless state.ws.connected?
+
+            sleep 0.1
+        end
+        flunk("websocket did not close in #{timeout}s")
+    end
+
+    def assert_websocket_receives_message(state, timeout: 3)
+        deadline = Time.now + timeout
+        while Time.now < deadline
+            unless state.received_messages.empty?
+                return JSON.parse(state.received_messages.pop)
             end
-            assert_in_delta value, v, tolerance
-        else
-            flunk("expected value #{value.inspect} should be a number")
+
+            sleep 0.1
+        end
+        flunk("no messages received in #{timeout}s")
+    end
+
+    def websocket_connect(state, event)
+        Kontena::Websocket::Client.connect(@url) do |ws|
+            state.ws = ws
+            event&.set
+            ws.read do |message|
+                state.received_messages += [message]
+            end
+        end
+    rescue Kontena::Websocket::CloseError # rubocop:disable Lint/SuppressedException
+    ensure
+        event&.set
+    end
+
+    def websocket_create(wait: true)
+        s = websocket_state_struct.new(nil, [], nil)
+        event = Concurrent::Event.new if wait
+        s.connection_thread = Thread.new { websocket_connect(s, event) }
+
+        if event && !event.wait(5)
+            unless s.connection_thread.status
+                s.connection_thread.value # raises if the thread terminated with exception
+            end
+            flunk("timed out waiting for the websocket to connect")
+        end
+        @websocket_created << s
+
+        s
+    end
+
+    # Helper that allows compating values within a recursive hash (i.e. JSON doc)
+    def assert_values_near(expected, actual, tolerance: 1e-4)
+        if expected.length != actual.length
+            flunk("expected length #{expected.length}, got #{actual.length}")
+        end
+
+        expected.each_index do |ind|
+            value = expected[ind]
+            v = actual[ind]
+            if value.kind_of?(Numeric)
+                unless v.kind_of?(Numeric)
+                    flunk("expected #{v.inspect} to be a number")
+                end
+                assert_in_delta value, v, tolerance
+            else
+                flunk("expected value #{value.inspect} should be a number")
+            end
         end
     end
 end

@@ -3,17 +3,17 @@
 #ifndef CONTROLDEV_WEBSOCKET_TASK_TASK_HPP
 #define CONTROLDEV_WEBSOCKET_TASK_TASK_HPP
 
-#include "../controldev_websocketTypes.hpp"
 #include "controldev_websocket/TaskBase.hpp"
 #include <controldev/RawCommand.hpp>
 
 #include <vector>
-#include <seasocks/Server.h>
-#include <seasocks/WebSocket.h>
 #include <thread>
 #include <memory>
 
-#include <json/json.h>
+namespace seasocks {
+    class WebSocket;
+    class Server;
+}
 
 namespace controldev_websocket{
     struct JoystickHandler;
@@ -35,27 +35,27 @@ namespace controldev_websocket{
      */
     class Task : public TaskBase
     {
-    friend class TaskBase;
-    friend struct JoystickHandler;
+        friend class TaskBase;
+        friend struct JoystickHandler;
 
-    MessageDecoder *decoder = nullptr;
+        MessageDecoder *decoder = nullptr;
 
-    seasocks::Server *server = nullptr;
-    std::thread *thread = nullptr;
-    std::shared_ptr<JoystickHandler> handler;
-    controldev::RawCommand raw_cmd_obj;
-    bool handleIncomingWebsocketMessage(char const* data, seasocks::WebSocket *connection);
-    bool updateRawCommand();
-    bool handleAskControlMessage();
-    bool handleControlMessage();
+        seasocks::Server *server = nullptr;
+        std::thread *thread = nullptr;
+        std::shared_ptr<JoystickHandler> handler;
+        controldev::RawCommand raw_cmd_obj;
+        bool handleIncomingWebsocketMessage(char const* data, seasocks::WebSocket *connection);
+        bool updateRawCommand();
+        bool handleAskControlMessage();
+        bool handleControlMessage();
 
 
-    std::vector<Mapping> *axis = nullptr;
-    std::vector<ButtonMapping> *button = nullptr;
+        std::vector<Mapping> *axis = nullptr;
+        std::vector<ButtonMapping> *button = nullptr;
 
-    bool is_controlling = false;
-    int errors = 0;
-    int received = 0;
+        bool is_controlling = false;
+        int errors = 0;
+        int received = 0;
 
     public:
         /** TaskContext constructor for Task
