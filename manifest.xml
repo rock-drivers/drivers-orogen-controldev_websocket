@@ -10,6 +10,7 @@ Finally, for each received message the server (task) sends a message back to its
   <depend package="drivers/controldev"/>
   <depend package="tools/seasocks"/>
   <depend package="base/logging"/>
+  <depend package="jsoncpp"/>
 
   <test_depend name="tools/syskit" />
   <test_depend name="kontena-websocket-client" />
