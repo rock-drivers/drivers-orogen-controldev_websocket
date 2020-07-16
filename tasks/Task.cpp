@@ -132,6 +132,7 @@ bool Task::handleControlMessage() {
     if (!updateRawCommand()){
         return false;
     }
+    raw_cmd_obj.time = base::Time::now();
     _raw_command.write(raw_cmd_obj);
     return true;
 }
