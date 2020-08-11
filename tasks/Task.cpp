@@ -237,11 +237,11 @@ void Task::stopHook()
     TaskBase::stopHook();
     server->terminate();
     thread->join();
+    delete thread;
 }
 void Task::cleanupHook()
 {
     TaskBase::cleanupHook();
     delete server;
-    delete thread;
     delete decoder;
 }
