@@ -42,7 +42,6 @@ namespace controldev_websocket{
 
         seasocks::Server *server = nullptr;
         std::thread *thread = nullptr;
-        std::shared_ptr<JoystickHandler> handler;
         controldev::RawCommand raw_cmd_obj;
         bool handleIncomingWebsocketMessage(char const* data, seasocks::WebSocket *connection);
         bool updateRawCommand();

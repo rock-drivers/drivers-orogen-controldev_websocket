@@ -203,8 +203,10 @@ bool Task::configureHook()
     decoder = new MessageDecoder();
     auto logger = std::make_shared<PrintfLogger>(Logger::Level::Debug);
     server = new Server (logger);
-    handler = std::make_shared<JoystickHandler>();
+
+    auto handler = std::make_shared<JoystickHandler>();
     handler->task = this;
+    server->addWebSocketHandler("/ws", handler, true);
 
     return true;
 }
@@ -214,7 +216,6 @@ bool Task::startHook()
         return false;
     }
 
-    server->addWebSocketHandler("/ws", handler, true);
     if (!server->startListening(_port.get())) {
         return false;
     }
