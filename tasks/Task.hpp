@@ -50,8 +50,8 @@ namespace controldev_websocket{
         bool handleControlMessage();
 
 
-        std::vector<Mapping> *axis = nullptr;
-        std::vector<ButtonMapping> *button = nullptr;
+        std::vector<Mapping> axis;
+        std::vector<ButtonMapping> button;
 
         bool is_controlling = false;
         int errors = 0;
