@@ -110,7 +110,7 @@ struct controldev_websocket::MessageDecoder{
 
     base::Time getTime(){
         return base::Time::fromMilliseconds(
-            jdata["time"].asDouble()
+            jdata["time"].asUInt64()
         );
     }
 };
