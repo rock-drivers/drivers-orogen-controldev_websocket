@@ -107,6 +107,12 @@ struct controldev_websocket::MessageDecoder{
         }
         return field[mapping.index].asDouble();
     }
+
+    base::Time getTime(){
+        return base::Time::fromMilliseconds(
+            jdata["time"].asDouble()
+        );
+    }
 };
 
 bool Task::handleIncomingWebsocketMessage(char const* data, WebSocket *connection) {
@@ -132,7 +138,6 @@ bool Task::handleControlMessage() {
     if (!updateRawCommand()){
         return false;
     }
-    raw_cmd_obj.time = base::Time::now();
     _raw_command.write(raw_cmd_obj);
     return true;
 }
@@ -160,6 +165,7 @@ bool Task::updateRawCommand(){
             raw_cmd_obj.buttonValue.at(i) =
                 decoder->getValue(button->at(i)) > button->at(i).threshold;
         }
+        raw_cmd_obj.time = decoder->getTime();
         return true;
     }
     // A failure here means that the client sent a bad message or the

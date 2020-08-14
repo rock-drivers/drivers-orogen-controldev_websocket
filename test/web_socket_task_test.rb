@@ -200,6 +200,21 @@ describe OroGen.controldev_websocket.Task do
             assert_values_near Array.new(6, 0), sample.axisValue.to_a
             assert_values_near expected, sample.buttonValue.to_a
         end
+
+        it "forwards the timestamp" do
+            msg = {
+                axes: Array.new(4, 0),
+                buttons: Array.new(16, 0),
+                time: 123_456_789
+            }
+
+            sample =
+                expect_execution { websocket_send websocket, msg }
+                .timeout(1)
+                .to { have_one_new_sample task.raw_command_port }
+
+            assert_equal msg[:time], sample.time.to_f * 1000
+        end
     end
 
     describe "the statistics" do
