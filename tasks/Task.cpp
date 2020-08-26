@@ -158,12 +158,12 @@ bool Task::handleAskControlMessage() {
 // Fill the Raw Command with the JSON data at decoder.
 bool Task::updateRawCommand(){
     try {
-        for (uint i = 0; i < axis->size(); ++i) {
-            raw_cmd_obj.axisValue.at(i) = decoder->getValue(axis->at(i));
+        for (uint i = 0; i < axis.size(); ++i) {
+            raw_cmd_obj.axisValue.at(i) = decoder->getValue(axis.at(i));
         }
-        for (uint i = 0; i < button->size(); ++i){
+        for (uint i = 0; i < button.size(); ++i){
             raw_cmd_obj.buttonValue.at(i) =
-                decoder->getValue(button->at(i)) > button->at(i).threshold;
+                decoder->getValue(button.at(i)) > button.at(i).threshold;
         }
         raw_cmd_obj.time = decoder->getTime();
         return true;
@@ -194,17 +194,19 @@ bool Task::configureHook()
     received = 0;
     errors = 0;
 
-    button = new std::vector<ButtonMapping>(_button_map.get());
-    axis = new auto(_axis_map.get());
+    button = _button_map.get();
+    axis = _axis_map.get();
 
-    raw_cmd_obj.buttonValue.resize(button->size(), 0);
-    raw_cmd_obj.axisValue.resize(axis->size(), 0.0);
+    raw_cmd_obj.buttonValue.resize(button.size(), 0);
+    raw_cmd_obj.axisValue.resize(axis.size(), 0.0);
 
     decoder = new MessageDecoder();
     auto logger = std::make_shared<PrintfLogger>(Logger::Level::Debug);
     server = new Server (logger);
-    handler = std::make_shared<JoystickHandler>();
+
+    auto handler = std::make_shared<JoystickHandler>();
     handler->task = this;
+    server->addWebSocketHandler("/ws", handler, true);
 
     return true;
 }
@@ -214,7 +216,6 @@ bool Task::startHook()
         return false;
     }
 
-    server->addWebSocketHandler("/ws", handler, true);
     if (!server->startListening(_port.get())) {
         return false;
     }
@@ -236,11 +237,11 @@ void Task::stopHook()
     TaskBase::stopHook();
     server->terminate();
     thread->join();
+    delete thread;
 }
 void Task::cleanupHook()
 {
     TaskBase::cleanupHook();
     delete server;
-    delete thread;
     delete decoder;
 }

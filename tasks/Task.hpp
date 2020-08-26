@@ -42,7 +42,6 @@ namespace controldev_websocket{
 
         seasocks::Server *server = nullptr;
         std::thread *thread = nullptr;
-        std::shared_ptr<JoystickHandler> handler;
         controldev::RawCommand raw_cmd_obj;
         bool handleIncomingWebsocketMessage(char const* data, seasocks::WebSocket *connection);
         bool updateRawCommand();
@@ -50,8 +49,8 @@ namespace controldev_websocket{
         bool handleControlMessage();
 
 
-        std::vector<Mapping> *axis = nullptr;
-        std::vector<ButtonMapping> *button = nullptr;
+        std::vector<Mapping> axis;
+        std::vector<ButtonMapping> button;
 
         bool is_controlling = false;
         int errors = 0;
