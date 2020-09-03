@@ -11,13 +11,65 @@ Also, the first message sent by the websocket client should be handshake with a 
 ```
 {
     "test_message": {
-        "buttons": { ... }
-        "axes": { ... }
+        "buttons": { ... },
+        "axes": { ... },
+        "time": 123 // time in ms
     }
 }
 ```
 
 In addition, the task has a `statistics` port sending `controldev_websocket/Statistics` with `received` and `errors` fields counting incoming messages and failures to build a `controldev/RawCommand` with it.
+
+### Connection messages
+
+When opening the websocket connection your client will be at the pending state. The state  will advance to controlling only after the handshake message. It is valid to remember that the server stores only one pending and one controlling connection. Everytime a new connection is made this server will return a message informing if stole the connection from someone else or if it is new. Also, everytime a connection is closed because other stole it a message might be sent to the client before informing that it lost the connection. The messages have a "peer" field indicating the id of the other related client.
+
+The message is as follows:
+- When just created and no one was pending:
+  ```
+  {
+      connection_state: {
+          state: "new"
+      }
+  }
+  ```
+- When just created and other was pending:
+  ```
+  {
+      connection_state: {
+          state: "stolen",
+          peer: "pending connection"
+      }
+  }
+  ```
+- When pending and other was created:
+  ```
+  {
+      connection_state: {
+          state: "lost",
+          peer: "pending connection"
+      }
+  }
+  ```
+- When goes to controlling and other was there:
+  ```
+  {
+      connection_state: {
+          state: "stolen",
+          peer: "$OTHER_ID"
+      }
+  }
+  ```
+- When is controlling and a pending steal it:
+  ```
+  {
+      connection_state: {
+          state: "lost",
+          peer: "$PENDING_ID"
+      }
+  }
+  ```
+
 
 ## Configuration
 
