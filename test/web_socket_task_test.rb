@@ -62,16 +62,16 @@ describe OroGen.controldev_websocket.Task do
 
         it "closes the first connection cleanly" do
             assert_websocket_closes_cleanly @websocket
-            msg = assert_websocket_receives_message @websocket
-            assert_state_value_equals msg, LOSE_CONNECTION, "connection_state", "state"
-            assert_state_value_equals msg, "new connection", "connection_state", "peer"
+            m = assert_websocket_receives_message @websocket
+            assert_state_value_equals m, LOSE_CONNECTION, "connection_state", "state"
+            assert_state_value_equals m, "pending connection", "connection_state", "peer"
         end
 
         it "accepts the second connection" do
             assert websocket_running? @second_websocket
-            msg = assert_websocket_receives_message @second_websocket
-            assert_state_value_equals msg, STEAL_CONNECTION, "connection_state", "state"
-            assert_state_value_equals msg, "fresh connection", "connection_state", "peer"
+            m = assert_websocket_receives_message @second_websocket
+            assert_state_value_equals m, STEAL_CONNECTION, "connection_state", "state"
+            assert_state_value_equals m, "pending connection", "connection_state", "peer"
         end
     end
 

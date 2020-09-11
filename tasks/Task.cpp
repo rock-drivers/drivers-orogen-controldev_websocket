@@ -92,9 +92,13 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
         task->_statistics.write(statistic);
         socket->send(fast.write(msg));
     }
-    void onDisconnect(WebSocket *socket) override{
-        if (controlling.connection == socket){
+    void onDisconnect(WebSocket *socket) override {
+        if (controlling.connection == socket) {
             controlling = Client();
+        } else if (pending.connection == socket) {
+            pending = Client();
+        } else {
+            LOG_WARN_S << "Received message from inactive connection" << std::endl;
         }
     }
 };
