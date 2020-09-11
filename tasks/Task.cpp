@@ -27,21 +27,7 @@ struct controldev_websocket::Client {
         return connection == nullptr;
     }
 
-    void steal(Client &other){
-        Json::Value feedback;
-        if (other.isEmpty()){
-            feedback["connection_state"]["state"] = "new";
-        } else {
-            feedback["connection_state"]["state"] = "lost";
-            feedback["connection_state"]["peer"] = id.empty() ? "pending connection" : id;
-            other.connection->send(fast.write(feedback));
-            other.connection->close();
-            feedback["connection_state"]["state"] = "stolen";
-            feedback["connection_state"]["peer"] = other.id.empty() ? "pending connection"
-                                                                      : other.id;
-        }
-        connection->send(fast.write(feedback));
-    };
+
 };
 struct controldev_websocket::JoystickHandler : WebSocket::Handler {
     Client pending;
@@ -51,25 +37,42 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
     Json::FastWriter fast;
     Statistics statistic;
 
+    void handleNewConnection(Client newer, Client other){
+        Json::Value feedback;
+        if (other.isEmpty()){
+            feedback["connection_state"]["state"] = "new";
+        } else {
+            feedback["connection_state"]["state"] = "lost";
+            feedback["connection_state"]["peer"] = newer.id.empty() ? "pending connection"
+                                                                      : newer.id;
+            other.connection->send(fast.write(feedback));
+            other.connection->close();
+            feedback["connection_state"]["state"] = "stolen";
+            feedback["connection_state"]["peer"] = other.id.empty() ? "pending connection"
+                                                                      : other.id;
+        }
+        newer.connection->send(fast.write(feedback));
+    };
+
     void onConnect(WebSocket *socket) override{
         Client new_pending;
         new_pending.connection = socket;
-        new_pending.steal(pending);
+        handleNewConnection(new_pending, pending);
         pending = new_pending;
     }
     void onData(WebSocket *socket, const char *data) override{
 
-        if (socket != pending.connection and socket != controlling.connection) {
+        if (socket != pending.connection && socket != controlling.connection) {
             LOG_WARN_S << "Received message from inactive connection" << std::endl;
             return;
         }
         bool result = task->parseIncomingWebsocketMessage(data, socket);
 
         if (socket == pending.connection) {
-            result = result and task->getIdFromMessage(pending.id);
-            result = result and task->handleAskControlMessage();
+            result = result && task->getIdFromMessage(pending.id);
+            result = result && task->handleAskControlMessage();
             if (result) {
-                pending.steal(controlling);
+                handleNewConnection(pending, controlling);
                 controlling = pending;
                 pending = Client();
                 return;
@@ -78,7 +81,7 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
             socket->send(fast.write(msg));
             return;
         }
-        result = result and task->handleControlMessage();
+        result = result && task->handleControlMessage();
         msg["result"] = result;
         ++task->received;
 
