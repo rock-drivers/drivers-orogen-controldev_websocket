@@ -22,16 +22,12 @@ struct controldev_websocket::Client {
     WebSocket *connection = nullptr;
     std::string id = "";
     Json::FastWriter fast;
-    bool is_new = true;
 
     bool isEmpty(){
         return connection == nullptr;
     }
 
     void steal(Client &other){
-        if (other.isEmpty() and !is_new){
-            return;
-        }
         Json::Value feedback;
         if (other.isEmpty()){
             feedback["connection_state"]["state"] = "new";
@@ -45,7 +41,6 @@ struct controldev_websocket::Client {
                                                                       : other.id;
         }
         connection->send(fast.write(feedback));
-        is_new = false;
     };
 };
 struct controldev_websocket::JoystickHandler : WebSocket::Handler {
@@ -70,17 +65,20 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
         }
         bool result = task->parseIncomingWebsocketMessage(data, socket);
 
-        if (socket == controlling.connection) {
-            result = result and task->handleControlMessage();
-        } else { // socket is pending
+        if (socket == pending.connection) {
             result = result and task->getIdFromMessage(pending.id);
             result = result and task->handleAskControlMessage();
             if (result) {
                 pending.steal(controlling);
                 controlling = pending;
                 pending = Client();
+                return;
             }
+            msg["connection_state"]["state"] = "handshake failed";
+            socket->send(fast.write(msg));
+            return;
         }
+        result = result and task->handleControlMessage();
         msg["result"] = result;
         ++task->received;
 

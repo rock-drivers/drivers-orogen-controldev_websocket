@@ -96,9 +96,6 @@ describe OroGen.controldev_websocket.Task do
                     id: "misc_id_second" }
             websocket_send @second_websocket, msg
 
-            message = assert_websocket_receives_message @second_websocket
-            assert message.fetch("result")
-
             msg = assert_websocket_receives_message @second_websocket
             assert_state_value_equals msg, STEAL_CONNECTION, "connection_state", "state"
             assert_state_value_equals msg, "misc_id", "connection_state", "peer"
@@ -118,26 +115,26 @@ describe OroGen.controldev_websocket.Task do
 
         it "rejects invalid first messages" do
             websocket_send @websocket, "pineapple"
-            message = assert_websocket_receives_message(@websocket)
-            refute message.fetch("result")
+            msg = assert_websocket_receives_message(@websocket)
+            assert_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
         end
 
         it "responds false to a correct control message received before "\
            "a valid handshake message" do
-            msg = { axes: Array.new(4, 0), buttons: Array.new(16, 0) }
+            msg = { axes: Array.new(4, 0), buttons: Array.new(16, 0), time: 123 }
             websocket_send @websocket, msg
-            message = assert_websocket_receives_message(@websocket)
-            refute message.fetch("result")
+            msg = assert_websocket_receives_message(@websocket)
+            assert_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
         end
 
         it "does not switch to control mode if the received message is not "\
            "a handshake" do
-            msg = { axes: Array.new(4, 0), buttons: Array.new(16, 0) }
+            msg = { axes: Array.new(4, 0), buttons: Array.new(16, 0), time: 123 }
             websocket_send @websocket, msg
             assert_websocket_receives_message(@websocket)
             websocket_send @websocket, msg
-            message = assert_websocket_receives_message(@websocket)
-            refute message.fetch("result")
+            msg = assert_websocket_receives_message(@websocket)
+            assert_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
         end
 
         it "replies to a valid handshake messages" do
@@ -146,8 +143,8 @@ describe OroGen.controldev_websocket.Task do
                                     time: 123 },
                     id: "misc_id" }
             websocket_send @websocket, msg
-            message = assert_websocket_receives_message(@websocket)
-            assert message.fetch("result")
+            msg = assert_websocket_receives_message(@websocket)
+            refute_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
         end
     end
 
@@ -159,21 +156,21 @@ describe OroGen.controldev_websocket.Task do
 
         it "rejects invalid JSON" do
             websocket_send websocket, "pineapple"
-            message = assert_websocket_receives_message(@websocket)
-            refute message.fetch("result")
+            msg = assert_websocket_receives_message(@websocket)
+            assert_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
         end
 
         it "rejects valid JSON that is not the expected handshake schema" do
             websocket_send websocket, {}
-            message = assert_websocket_receives_message(@websocket)
-            refute message.fetch("result")
+            msg = assert_websocket_receives_message(@websocket)
+            assert_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
         end
 
         it "rejects a valid control message while the handshake was expected" do
             msg = { axes: Array.new(4, 0), buttons: Array.new(16, 0) }
             websocket_send websocket, msg
-            message = assert_websocket_receives_message(@websocket)
-            refute message.fetch("result")
+            msg = assert_websocket_receives_message(@websocket)
+            assert_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
         end
 
         it "rejects invalid JSON after a valid handshake" do
@@ -182,10 +179,11 @@ describe OroGen.controldev_websocket.Task do
                                     time: 123 },
                     id: "misc_id" }
             websocket_send websocket, msg
+            assert_websocket_receives_message(@websocket)
 
             websocket_send websocket, "pineapple"
-            message = assert_websocket_receives_message(@websocket)
-            refute message.fetch("result")
+            msg = assert_websocket_receives_message(@websocket)
+            refute msg.fetch("result")
         end
 
         it "rejects a valid handshake message during the control phase" do
@@ -196,8 +194,8 @@ describe OroGen.controldev_websocket.Task do
             websocket_send websocket, msg
             assert_websocket_receives_message(@websocket)
             websocket_send websocket, msg
-            message = assert_websocket_receives_message(@websocket)
-            refute message.fetch("result")
+            msg = assert_websocket_receives_message(@websocket)
+            refute msg.fetch("result")
         end
 
         it "rejects an invalid control message after a valid handshake" do
@@ -206,11 +204,12 @@ describe OroGen.controldev_websocket.Task do
                                     time: 123 },
                     id: "misc_id" }
             websocket_send websocket, msg
+            assert_websocket_receives_message(@websocket)
 
             msg = { axes: Array.new(2, 0), buttons: Array.new(5, 0) }
             websocket_send websocket, msg
-            message = assert_websocket_receives_message(@websocket)
-            refute message.fetch("result")
+            msg = assert_websocket_receives_message(@websocket)
+            refute msg.fetch("result")
         end
     end
 
@@ -221,8 +220,8 @@ describe OroGen.controldev_websocket.Task do
                                     time: 123 },
                     id: "misc_id" }
             websocket_send @websocket, msg
-            message = assert_websocket_receives_message(@websocket)
-            assert message.fetch("result")
+            msg = assert_websocket_receives_message(@websocket)
+            refute_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
         end
 
         it "write raw command samples from JSON messages" do
@@ -287,8 +286,8 @@ describe OroGen.controldev_websocket.Task do
                                     time: 123 },
                     id: "misc_id" }
             websocket_send @websocket, msg
-            message = assert_websocket_receives_message(@websocket)
-            assert message.fetch("result")
+            msg = assert_websocket_receives_message(@websocket)
+            refute_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
         end
 
         it "counts the number of correct messages" do
@@ -296,7 +295,7 @@ describe OroGen.controldev_websocket.Task do
             sample = expect_execution { websocket_send websocket, msg }
                      .timeout(1).to { have_one_new_sample task.statistics_port }
 
-            assert_equal 2, sample.received
+            assert_equal 1, sample.received
             assert_equal 0, sample.errors
         end
 
@@ -304,7 +303,7 @@ describe OroGen.controldev_websocket.Task do
             sample = expect_execution { websocket_send websocket, "pineapple" }
                      .timeout(1).to { have_one_new_sample task.statistics_port }
 
-            assert_equal 2, sample.received
+            assert_equal 1, sample.received
             assert_equal 1, sample.errors
         end
 
@@ -313,7 +312,7 @@ describe OroGen.controldev_websocket.Task do
             sample = expect_execution { websocket_send websocket, msg }
                      .timeout(1).to { have_one_new_sample task.statistics_port }
 
-            assert_equal 2, sample.received
+            assert_equal 1, sample.received
             assert_equal 1, sample.errors
         end
 
@@ -322,7 +321,7 @@ describe OroGen.controldev_websocket.Task do
             sample = expect_execution { websocket_send websocket, msg }
                      .timeout(1).to { have_one_new_sample task.statistics_port }
 
-            assert_equal 2, sample.received
+            assert_equal 1, sample.received
             assert_equal 1, sample.errors
         end
     end
@@ -411,6 +410,11 @@ describe OroGen.controldev_websocket.Task do
     def assert_state_value_equals(hash, expected, *path)
         actual = path.inject(hash) { |h, p| h.fetch(p) }
         assert_equal expected, actual
+    end
+
+    def refute_state_value_equals(hash, expected, *path)
+        actual = path.inject(hash) { |h, p| h.fetch(p) }
+        refute_equal expected, actual
     end
 
     # Helper that allows compating values within a recursive hash (i.e. JSON doc)
