@@ -14,6 +14,18 @@ describe OroGen.controldev_websocket.Task do
     FIRST_CONNECTION = "new"
     STEAL_CONNECTION = "stolen"
     LOSE_CONNECTION = "lost"
+    HANDSHAKE_FAILED = "handshake failed"
+
+    CMD_MSG = {
+        axes: Array.new(4, 0),
+        buttons: Array.new(16, 0),
+        time: 123
+    }.freeze
+
+    HANDSHAKE_MSG = {
+        test_message: CMD_MSG,
+        id: "misc_id"
+    }.freeze
 
     before do
         @task = task = syskit_deploy(
@@ -77,11 +89,7 @@ describe OroGen.controldev_websocket.Task do
 
     describe "the behavior on new connections when controlling" do
         before do
-            msg = { test_message: { axes: Array.new(4, 0),
-                                    buttons: Array.new(16, 0),
-                                    time: 123 },
-                    id: "misc_id" }
-            websocket_send @websocket, msg
+            websocket_send @websocket, HANDSHAKE_MSG
             @second_websocket = websocket_create
             assert websocket_running? @websocket
             assert websocket_running? @second_websocket
@@ -121,28 +129,22 @@ describe OroGen.controldev_websocket.Task do
 
         it "responds false to a correct control message received before "\
            "a valid handshake message" do
-            msg = { axes: Array.new(4, 0), buttons: Array.new(16, 0), time: 123 }
-            websocket_send @websocket, msg
+            websocket_send @websocket, CMD_MSG
             msg = assert_websocket_receives_message(@websocket)
             assert_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
         end
 
         it "does not switch to control mode if the received message is not "\
            "a handshake" do
-            msg = { axes: Array.new(4, 0), buttons: Array.new(16, 0), time: 123 }
-            websocket_send @websocket, msg
+            websocket_send @websocket, CMD_MSG
             assert_websocket_receives_message(@websocket)
-            websocket_send @websocket, msg
+            websocket_send @websocket, CMD_MSG
             msg = assert_websocket_receives_message(@websocket)
             assert_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
         end
 
         it "replies to a valid handshake messages" do
-            msg = { test_message: { axes: Array.new(4, 0),
-                                    buttons: Array.new(16, 0),
-                                    time: 123 },
-                    id: "misc_id" }
-            websocket_send @websocket, msg
+            websocket_send @websocket, HANDSHAKE_MSG
             msg = assert_websocket_receives_message(@websocket)
             refute_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
         end
@@ -167,18 +169,13 @@ describe OroGen.controldev_websocket.Task do
         end
 
         it "rejects a valid control message while the handshake was expected" do
-            msg = { axes: Array.new(4, 0), buttons: Array.new(16, 0) }
-            websocket_send websocket, msg
+            websocket_send websocket, CMD_MSG
             msg = assert_websocket_receives_message(@websocket)
             assert_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
         end
 
         it "rejects invalid JSON after a valid handshake" do
-            msg = { test_message: { axes: Array.new(4, 0),
-                                    buttons: Array.new(16, 0),
-                                    time: 123 },
-                    id: "misc_id" }
-            websocket_send websocket, msg
+            websocket_send websocket, HANDSHAKE_MSG
             assert_websocket_receives_message(@websocket)
 
             websocket_send websocket, "pineapple"
@@ -187,26 +184,18 @@ describe OroGen.controldev_websocket.Task do
         end
 
         it "rejects a valid handshake message during the control phase" do
-            msg = { test_message: { axes: Array.new(4, 0),
-                                    buttons: Array.new(16, 0),
-                                    time: 123 },
-                    id: "misc_id" }
-            websocket_send websocket, msg
+            websocket_send websocket, HANDSHAKE_MSG
             assert_websocket_receives_message(@websocket)
-            websocket_send websocket, msg
+            websocket_send websocket, HANDSHAKE_MSG
             msg = assert_websocket_receives_message(@websocket)
             refute msg.fetch("result")
         end
 
         it "rejects an invalid control message after a valid handshake" do
-            msg = { test_message: { axes: Array.new(4, 0),
-                                    buttons: Array.new(16, 0),
-                                    time: 123 },
-                    id: "misc_id" }
-            websocket_send websocket, msg
+            websocket_send websocket, HANDSHAKE_MSG
             assert_websocket_receives_message(@websocket)
 
-            msg = { axes: Array.new(2, 0), buttons: Array.new(5, 0) }
+            msg = { axes: Array.new(2, 0), buttons: Array.new(5, 0) } # missing time field
             websocket_send websocket, msg
             msg = assert_websocket_receives_message(@websocket)
             refute msg.fetch("result")
@@ -215,18 +204,13 @@ describe OroGen.controldev_websocket.Task do
 
     describe "the component's nominal behavior" do
         before do
-            msg = { test_message: { axes: Array.new(4, 0),
-                                    buttons: Array.new(16, 0),
-                                    time: 123 },
-                    id: "misc_id" }
-            websocket_send @websocket, msg
+            websocket_send @websocket, HANDSHAKE_MSG
             msg = assert_websocket_receives_message(@websocket)
             refute_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
         end
 
         it "write raw command samples from JSON messages" do
-            msg = { axes: Array.new(4, 0), buttons: Array.new(16, 0), time: 123 }
-            expect_execution { websocket_send websocket, msg }
+            expect_execution { websocket_send websocket, CMD_MSG }
                 .timeout(1)
                 .to { have_one_new_sample task.raw_command_port }
         end
@@ -281,18 +265,13 @@ describe OroGen.controldev_websocket.Task do
 
     describe "the statistics" do
         before do
-            msg = { test_message: { axes: Array.new(4, 0),
-                                    buttons: Array.new(16, 0),
-                                    time: 123 },
-                    id: "misc_id" }
-            websocket_send @websocket, msg
+            websocket_send @websocket, HANDSHAKE_MSG
             msg = assert_websocket_receives_message(@websocket)
             refute_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
         end
 
         it "counts the number of correct messages" do
-            msg = { axes: Array.new(4, 0), buttons: Array.new(16, 0), time: 123 }
-            sample = expect_execution { websocket_send websocket, msg }
+            sample = expect_execution { websocket_send websocket, CMD_MSG }
                      .timeout(1).to { have_one_new_sample task.statistics_port }
 
             assert_equal 1, sample.received
