@@ -12,44 +12,94 @@
 #include <iostream>
 #include <json/json.h>
 
+#include <list>
+
 using namespace controldev_websocket;
 using namespace controldev;
 using namespace seasocks;
 
-struct controldev_websocket::JoystickHandler : WebSocket::Handler {
+struct controldev_websocket::Client {
     WebSocket *connection = nullptr;
+    std::string id = "";
+    Json::FastWriter fast;
+
+    bool isEmpty(){
+        return connection == nullptr;
+    }
+
+
+};
+struct controldev_websocket::JoystickHandler : WebSocket::Handler {
+    Client pending;
+    Client controlling;
     Task *task = nullptr;
     Json::Value msg;
     Json::FastWriter fast;
     Statistics statistic;
 
-    void onConnect(WebSocket *socket) override{
-        if (connection != nullptr){
-            connection->close();
+    void handleNewConnection(Client newer, Client other){
+        Json::Value feedback;
+        if (other.isEmpty()){
+            feedback["connection_state"]["state"] = "new";
+        } else {
+            feedback["connection_state"]["state"] = "lost";
+            feedback["connection_state"]["peer"] = newer.id.empty() ? "pending connection"
+                                                                      : newer.id;
+            other.connection->send(fast.write(feedback));
+            other.connection->close();
+            feedback["connection_state"]["state"] = "stolen";
+            feedback["connection_state"]["peer"] = other.id.empty() ? "pending connection"
+                                                                      : other.id;
         }
-        connection = socket;
-        task->is_controlling = false;
+        newer.connection->send(fast.write(feedback));
+    };
+
+    void onConnect(WebSocket *socket) override{
+        Client new_pending;
+        new_pending.connection = socket;
+        handleNewConnection(new_pending, pending);
+        pending = new_pending;
     }
     void onData(WebSocket *socket, const char *data) override{
-        if (connection != socket) {
+
+        if (socket != pending.connection && socket != controlling.connection) {
             LOG_WARN_S << "Received message from inactive connection" << std::endl;
             return;
         }
+        bool result = task->parseIncomingWebsocketMessage(data, socket);
 
-        ++task->received;
-        bool result = task->handleIncomingWebsocketMessage(data, socket);
+        if (socket == pending.connection) {
+            result = result && task->getIdFromMessage(pending.id);
+            result = result && task->handleAskControlMessage();
+            if (result) {
+                handleNewConnection(pending, controlling);
+                controlling = pending;
+                pending = Client();
+                return;
+            }
+            msg["connection_state"]["state"] = "handshake failed";
+            socket->send(fast.write(msg));
+            return;
+        }
+        result = result && task->handleControlMessage();
         msg["result"] = result;
+        ++task->received;
+
         // Increment errors count if the result is false, do nothing otherwise
         task->errors += result ? 0 : 1;
         statistic.received = task->received;
         statistic.errors = task->errors;
         statistic.time = base::Time::now();
         task->_statistics.write(statistic);
-        connection->send(fast.write(msg));
+        socket->send(fast.write(msg));
     }
-    void onDisconnect(WebSocket *socket) override{
-        if (connection == socket){
-            connection = nullptr;
+    void onDisconnect(WebSocket *socket) override {
+        if (controlling.connection == socket) {
+            controlling = Client();
+        } else if (pending.connection == socket) {
+            pending = Client();
+        } else {
+            LOG_WARN_S << "Received message from inactive connection" << std::endl;
         }
     }
 };
@@ -79,7 +129,8 @@ struct controldev_websocket::MessageDecoder{
 
     bool validateControlMessage(){
         if (!jdata.isMember(mapFieldName(Mapping::Type::Axis)) ||
-            !jdata.isMember(mapFieldName(Mapping::Type::Button))) {
+            !jdata.isMember(mapFieldName(Mapping::Type::Button)) ||
+            !jdata.isMember("time")) {
             LOG_ERROR_S << "Invalid message, it doesn't contain the required fields.";
             LOG_ERROR_S << std::endl;
             return false;
@@ -97,6 +148,15 @@ struct controldev_websocket::MessageDecoder{
         return validateControlMessage();
     }
 
+    bool validateId(){
+        if (!jdata.isMember("id")) {
+            LOG_ERROR_S << "Invalid test msg, it doesn't contain the id field.";
+            LOG_ERROR_S << std::endl;
+            return false;
+        }
+        return true;
+    }
+
     double getValue(const Mapping &mapping){
         auto const& field = jdata[mapFieldName(mapping.type)];
         if (!field.isValidIndex(mapping.index)) {
@@ -108,6 +168,11 @@ struct controldev_websocket::MessageDecoder{
         return field[mapping.index].asDouble();
     }
 
+    std::string getId(){
+        auto const& field = jdata["id"];
+        return field.asString();
+    }
+
     base::Time getTime(){
         return base::Time::fromMilliseconds(
             jdata["time"].asUInt64()
@@ -115,19 +180,13 @@ struct controldev_websocket::MessageDecoder{
     }
 };
 
-bool Task::handleIncomingWebsocketMessage(char const* data, WebSocket *connection) {
+bool Task::parseIncomingWebsocketMessage(char const* data, WebSocket *connection) {
     std::string errs;
     if (!decoder->parseJSONMessage(data, errs)) {
         LOG_ERROR_S << "Failed parsing the message, got error: " << errs << std::endl;
         return false;
     }
-
-    if (is_controlling) {
-        return handleControlMessage();
-    }
-    else {
-        return handleAskControlMessage();
-    }
+    return true;
 }
 
 bool Task::handleControlMessage() {
@@ -151,7 +210,14 @@ bool Task::handleAskControlMessage() {
         return false;
     }
 
-    is_controlling = true;
+    return true;
+}
+
+bool Task::getIdFromMessage(std::string &out_str) {
+    if (!decoder->validateId()){
+        return false;
+    }
+    out_str = decoder->getId();
     return true;
 }
 

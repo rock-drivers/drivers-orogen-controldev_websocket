@@ -16,6 +16,7 @@ namespace seasocks {
 }
 
 namespace controldev_websocket{
+    struct Client;
     struct JoystickHandler;
     struct MessageDecoder;
 
@@ -43,10 +44,11 @@ namespace controldev_websocket{
         seasocks::Server *server = nullptr;
         std::thread *thread = nullptr;
         controldev::RawCommand raw_cmd_obj;
-        bool handleIncomingWebsocketMessage(char const* data, seasocks::WebSocket *connection);
+        bool parseIncomingWebsocketMessage(char const* data, seasocks::WebSocket *connection);
         bool updateRawCommand();
         bool handleAskControlMessage();
         bool handleControlMessage();
+        bool getIdFromMessage(std::string &out_str);
 
 
         std::vector<Mapping> axis;
