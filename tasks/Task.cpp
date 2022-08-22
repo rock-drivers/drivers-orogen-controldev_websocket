@@ -160,10 +160,12 @@ struct controldev_websocket::MessageDecoder{
     double getValue(const Mapping &mapping){
         auto const& field = jdata[mapFieldName(mapping.type)];
         if (!field.isValidIndex(mapping.index)) {
-            throw std::out_of_range(
-                "incoming raw command does not have a field " +
-                std::to_string(mapping.index) + "in " + mapFieldName(mapping.type)
-            );
+            if (!mapping.optional) {
+                throw std::out_of_range("incoming raw command does not have a field " +
+                                        std::to_string(mapping.index) + "in " +
+                                        mapFieldName(mapping.type));
+            }
+            return base::NaN<double>();
         }
         return field[mapping.index].asDouble();
     }

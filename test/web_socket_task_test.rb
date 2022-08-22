@@ -38,7 +38,10 @@ describe OroGen.controldev_websocket.Task do
             Types.controldev_websocket.Mapping.new(index: 6, type: :Button),
             Types.controldev_websocket.Mapping.new(index: 2, type: :Axis),
             Types.controldev_websocket.Mapping.new(index: 3, type: :Axis),
-            Types.controldev_websocket.Mapping.new(index: 7, type: :Button)
+            Types.controldev_websocket.Mapping.new(index: 7, type: :Button),
+            Types.controldev_websocket.Mapping.new(index: 4, type: :Axis,
+                                                   optional: true)
+
         ]
 
         task.properties.button_map =
@@ -216,11 +219,11 @@ describe OroGen.controldev_websocket.Task do
         end
 
         it "does correct axis conversion" do
-            msg = { axes: [0.1, 0.2, 0.4, 0.5], buttons: Array.new(16, 0), time: 123 }
+            msg = { axes: [0.1, 0.2, 0.4, 0.5, 0.7], buttons: Array.new(16, 0), time: 123 }
             msg[:buttons][6] = 0.3
             msg[:buttons][7] = 0.6
 
-            expected = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+            expected = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
             sample =
                 expect_execution { websocket_send websocket, msg }
                 .timeout(1).to { have_one_new_sample task.raw_command_port }
@@ -231,7 +234,7 @@ describe OroGen.controldev_websocket.Task do
 
         it "does correct button conversion" do
             msg = {
-                axes: Array.new(4, 0),
+                axes: Array.new(5, 0),
                 buttons: [0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0, 0,
                           0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85],
                 time: 123
@@ -243,7 +246,7 @@ describe OroGen.controldev_websocket.Task do
                 .timeout(1)
                 .to { have_one_new_sample task.raw_command_port }
 
-            assert_values_near Array.new(6, 0), sample.axisValue.to_a
+            assert_values_near Array.new(7, 0), sample.axisValue.to_a
             assert_values_near expected, sample.buttonValue.to_a
         end
 
@@ -260,6 +263,22 @@ describe OroGen.controldev_websocket.Task do
                 .to { have_one_new_sample task.raw_command_port }
 
             assert_equal msg[:time], sample.time.to_f * 1000
+        end
+
+        it "ignores when an optional axis is not valid" do
+            msg = {
+                axes: [0.1, 0.2, 0.3, 0.4],
+                buttons: Array.new(16, 0),
+                time: 123_456_789
+            }
+            expected = [0.1, 0.2, 0.0, 0.3, 0.4, 0.0, Float::NAN]
+
+            sample =
+                expect_execution { websocket_send websocket, msg }
+                .timeout(1)
+                .to { have_one_new_sample task.raw_command_port }
+            assert_equal expected.slice(0, 6), sample.axisValue.to_a.slice(0, 6)
+            assert sample.axisValue.to_a[-1].nan?
         end
     end
 

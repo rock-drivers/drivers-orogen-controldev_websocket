@@ -5,6 +5,7 @@
 
 #include "controldev_websocket/TaskBase.hpp"
 #include <controldev/RawCommand.hpp>
+#include <base/Float.hpp>
 
 #include <vector>
 #include <thread>

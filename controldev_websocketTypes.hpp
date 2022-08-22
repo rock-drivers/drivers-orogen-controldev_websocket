@@ -19,6 +19,8 @@ namespace controldev_websocket
         Type type;
 
         int index;
+
+        bool optional = false;
     };
 
     struct ButtonMapping: public Mapping
