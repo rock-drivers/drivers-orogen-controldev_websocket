@@ -69,14 +69,17 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
         bool result = task->parseIncomingWebsocketMessage(data, socket);
 
         if (socket == pending.connection) {
+            LOG_WARN_S << "Handling Ask Control Message" << std::endl;
             result = result && task->getIdFromMessage(pending.id);
             result = result && task->handleAskControlMessage();
             if (result) {
                 handleNewConnection(pending, controlling);
                 controlling = pending;
                 pending = Client();
+                LOG_WARN_S << "Control given to the id " << controlling.id << std::endl;
                 return;
             }
+            LOG_WARN_S << "Handshake with id " << pending.id << " failed" << std::endl;
             msg["connection_state"]["state"] = "handshake failed";
             socket->send(fast.write(msg));
             return;
