@@ -41,7 +41,6 @@ describe OroGen.controldev_websocket.Task do
             Types.controldev_websocket.Mapping.new(index: 7, type: :Button),
             Types.controldev_websocket.Mapping.new(index: 4, type: :Axis,
                                                    optional: true)
-
         ]
 
         task.properties.button_map =
@@ -51,12 +50,6 @@ describe OroGen.controldev_websocket.Task do
             end
 
         @url = "ws://localhost:65432/ws"
-        syskit_configure_and_start(task)
-
-        @websocket_created = []
-        @websocket = websocket_create
-        message = assert_websocket_receives_message(@websocket)
-        assert_state_value_equals message, FIRST_CONNECTION, "connection_state", "state"
     end
 
     after do
@@ -66,262 +59,357 @@ describe OroGen.controldev_websocket.Task do
         end
     end
 
-    it "accepts a first connection" do
-        assert websocket_running?(@websocket)
-    end
-
-    describe "the behavior on new connections when pending" do
+    describe "no maximum time since messages" do
         before do
-            @second_websocket = websocket_create
+            syskit_configure_and_start(task)
+
+            @websocket_created = []
+            @websocket = websocket_create
+            message = assert_websocket_receives_message(@websocket)
+            assert_state_value_equals message, FIRST_CONNECTION, "connection_state",
+                                      "state"
         end
 
-        it "closes the first connection cleanly" do
-            assert_websocket_closes_cleanly @websocket
-            m = assert_websocket_receives_message @websocket
-            assert_state_value_equals m, LOSE_CONNECTION, "connection_state", "state"
-            assert_state_value_equals m, "pending connection", "connection_state", "peer"
+        it "accepts a first connection" do
+            assert websocket_running?(@websocket)
         end
 
-        it "accepts the second connection" do
-            assert websocket_running? @second_websocket
-            m = assert_websocket_receives_message @second_websocket
-            assert_state_value_equals m, STEAL_CONNECTION, "connection_state", "state"
-            assert_state_value_equals m, "pending connection", "connection_state", "peer"
+        describe "the behavior on new connections when pending" do
+            before do
+                @second_websocket = websocket_create
+            end
+
+            it "closes the first connection cleanly" do
+                assert_websocket_closes_cleanly @websocket
+                m = assert_websocket_receives_message @websocket
+                assert_state_value_equals m, LOSE_CONNECTION, "connection_state", "state"
+                assert_state_value_equals m, "pending connection", "connection_state",
+                                          "peer"
+            end
+
+            it "accepts the second connection" do
+                assert websocket_running? @second_websocket
+                m = assert_websocket_receives_message @second_websocket
+                assert_state_value_equals m, STEAL_CONNECTION, "connection_state", "state"
+                assert_state_value_equals m, "pending connection", "connection_state",
+                                          "peer"
+            end
+        end
+
+        describe "the behavior on new connections when controlling" do
+            before do
+                websocket_send @websocket, HANDSHAKE_MSG
+                @second_websocket = websocket_create
+                assert websocket_running? @websocket
+                assert websocket_running? @second_websocket
+                msg = assert_websocket_receives_message @second_websocket
+                assert_state_value_equals msg, FIRST_CONNECTION, "connection_state",
+                                          "state"
+            end
+
+            it "accepts the second handshake" do
+                msg = { test_message: { axes: Array.new(4, 0),
+                                        buttons: Array.new(16, 0),
+                                        time: 123 },
+                        id: "misc_id_second" }
+                websocket_send @second_websocket, msg
+
+                msg = assert_websocket_receives_message @second_websocket
+                assert_state_value_equals msg, STEAL_CONNECTION, "connection_state",
+                                          "state"
+                assert_state_value_equals msg, "misc_id", "connection_state", "peer"
+
+                assert_websocket_closes_cleanly @websocket
+                msg = assert_websocket_receives_message @websocket
+                assert_state_value_equals msg, LOSE_CONNECTION, "connection_state",
+                                          "state"
+                assert_state_value_equals msg, "misc_id_second", "connection_state",
+                                          "peer"
+            end
+        end
+
+        describe "server response is correct" do
+            it "does not send a message before receiving one" do
+                sleep 0.5
+                refute websocket_has_messages?(@websocket)
+            end
+
+            it "rejects invalid first messages" do
+                websocket_send @websocket, "pineapple"
+                msg = assert_websocket_receives_message(@websocket)
+                assert_state_value_equals msg, HANDSHAKE_FAILED, "connection_state",
+                                          "state"
+            end
+
+            it "responds false to a correct control message received before "\
+            "a valid handshake message" do
+                websocket_send @websocket, CMD_MSG
+                msg = assert_websocket_receives_message(@websocket)
+                assert_state_value_equals msg, HANDSHAKE_FAILED, "connection_state",
+                                          "state"
+            end
+
+            it "does not switch to control mode if the received message is not "\
+            "a handshake" do
+                websocket_send @websocket, CMD_MSG
+                assert_websocket_receives_message(@websocket)
+                websocket_send @websocket, CMD_MSG
+                msg = assert_websocket_receives_message(@websocket)
+                assert_state_value_equals msg, HANDSHAKE_FAILED, "connection_state",
+                                          "state"
+            end
+
+            it "replies to a valid handshake messages" do
+                websocket_send @websocket, HANDSHAKE_MSG
+                msg = assert_websocket_receives_message(@websocket)
+                refute_state_value_equals msg, HANDSHAKE_FAILED, "connection_state",
+                                          "state"
+            end
+        end
+
+        describe "the raw command output on invalid JSON input" do
+            it "does not send a message when there is no new JSON input" do
+                expect_execution
+                    .to { have_no_new_sample task.raw_command_port, at_least_during: 1.0 }
+            end
+
+            it "rejects invalid JSON" do
+                websocket_send websocket, "pineapple"
+                msg = assert_websocket_receives_message(@websocket)
+                assert_state_value_equals msg, HANDSHAKE_FAILED, "connection_state",
+                                          "state"
+            end
+
+            it "rejects valid JSON that is not the expected handshake schema" do
+                websocket_send websocket, {}
+                msg = assert_websocket_receives_message(@websocket)
+                assert_state_value_equals msg, HANDSHAKE_FAILED, "connection_state",
+                                          "state"
+            end
+
+            it "rejects a valid control message while the handshake was expected" do
+                websocket_send websocket, CMD_MSG
+                msg = assert_websocket_receives_message(@websocket)
+                assert_state_value_equals msg, HANDSHAKE_FAILED, "connection_state",
+                                          "state"
+            end
+
+            it "rejects invalid JSON after a valid handshake" do
+                websocket_send websocket, HANDSHAKE_MSG
+                assert_websocket_receives_message(@websocket)
+
+                websocket_send websocket, "pineapple"
+                msg = assert_websocket_receives_message(@websocket)
+                refute msg.fetch("result")
+            end
+
+            it "rejects a valid handshake message during the control phase" do
+                websocket_send websocket, HANDSHAKE_MSG
+                assert_websocket_receives_message(@websocket)
+                websocket_send websocket, HANDSHAKE_MSG
+                msg = assert_websocket_receives_message(@websocket)
+                refute msg.fetch("result")
+            end
+
+            it "rejects an invalid control message after a valid handshake" do
+                websocket_send websocket, HANDSHAKE_MSG
+                assert_websocket_receives_message(@websocket)
+
+                # missing time field
+                msg = { axes: Array.new(2, 0), buttons: Array.new(5, 0) }
+                websocket_send websocket, msg
+                msg = assert_websocket_receives_message(@websocket)
+                refute msg.fetch("result")
+            end
+        end
+
+        describe "the component's nominal behavior" do
+            before do
+                websocket_send @websocket, HANDSHAKE_MSG
+                msg = assert_websocket_receives_message(@websocket)
+                refute_state_value_equals msg, HANDSHAKE_FAILED, "connection_state",
+                                          "state"
+            end
+
+            it "write raw command samples from JSON messages" do
+                expect_execution { websocket_send websocket, CMD_MSG }
+                    .timeout(1)
+                    .to { have_one_new_sample task.raw_command_port }
+            end
+
+            it "does correct axis conversion" do
+                msg = {
+                    axes: [0.1, 0.2, 0.4, 0.5, 0.7],
+                    buttons: Array.new(16, 0), time: 123
+                }
+                msg[:buttons][6] = 0.3
+                msg[:buttons][7] = 0.6
+
+                expected = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
+                sample =
+                    expect_execution { websocket_send websocket, msg }
+                    .timeout(1).to { have_one_new_sample task.raw_command_port }
+
+                assert_values_near Array.new(13, 0), sample.buttonValue.to_a
+                assert_values_near expected, sample.axisValue.to_a
+            end
+
+            it "does correct button conversion" do
+                msg = {
+                    axes: Array.new(5, 0),
+                    buttons: [0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0, 0,
+                              0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85],
+                    time: 123
+                }
+                expected = [0, 0, 0, 0, 0, 0,
+                            1, 1, 1, 1, 1, 1, 1]
+                sample =
+                    expect_execution { websocket_send websocket, msg }
+                    .timeout(1)
+                    .to { have_one_new_sample task.raw_command_port }
+
+                assert_values_near Array.new(7, 0), sample.axisValue.to_a
+                assert_values_near expected, sample.buttonValue.to_a
+            end
+
+            it "forwards the timestamp" do
+                msg = {
+                    axes: Array.new(4, 0),
+                    buttons: Array.new(16, 0),
+                    time: 123_456_789
+                }
+
+                sample =
+                    expect_execution { websocket_send websocket, msg }
+                    .timeout(1)
+                    .to { have_one_new_sample task.raw_command_port }
+
+                assert_equal msg[:time], sample.time.to_f * 1000
+            end
+
+            it "ignores when an optional axis is not valid" do
+                msg = {
+                    axes: [0.1, 0.2, 0.3, 0.4],
+                    buttons: Array.new(16, 0),
+                    time: 123_456_789
+                }
+                expected = [0.1, 0.2, 0.0, 0.3, 0.4, 0.0, Float::NAN]
+
+                sample =
+                    expect_execution { websocket_send websocket, msg }
+                    .timeout(1)
+                    .to { have_one_new_sample task.raw_command_port }
+                assert_equal expected.slice(0, 6), sample.axisValue.to_a.slice(0, 6)
+                assert sample.axisValue.to_a[-1].nan?
+            end
+        end
+
+        describe "the statistics" do
+            before do
+                websocket_send @websocket, HANDSHAKE_MSG
+                msg = assert_websocket_receives_message(@websocket)
+                refute_state_value_equals msg, HANDSHAKE_FAILED, "connection_state",
+                                          "state"
+            end
+
+            it "counts the number of correct messages" do
+                sample = expect_execution { websocket_send websocket, CMD_MSG }
+                         .timeout(1).to { have_one_new_sample task.statistics_port }
+
+                assert_equal 1, sample.received
+                assert_equal 0, sample.errors
+            end
+
+            it "count invalid JSON input" do
+                sample = expect_execution { websocket_send websocket, "pineapple" }
+                         .timeout(1).to { have_one_new_sample task.statistics_port }
+
+                assert_equal 1, sample.received
+                assert_equal 1, sample.errors
+            end
+
+            it "count messages that are missing expected fields" do
+                msg = { pine: "apple" }
+                sample = expect_execution { websocket_send websocket, msg }
+                         .timeout(1).to { have_one_new_sample task.statistics_port }
+
+                assert_equal 1, sample.received
+                assert_equal 1, sample.errors
+            end
+
+            it "count messages whose expected fields don't have the expected values" do
+                msg = { axes: "pine", buttons: ["apple"] }
+                sample = expect_execution { websocket_send websocket, msg }
+                         .timeout(1).to { have_one_new_sample task.statistics_port }
+
+                assert_equal 1, sample.received
+                assert_equal 1, sample.errors
+            end
         end
     end
 
-    describe "the behavior on new connections when controlling" do
+    describe "filtering messages by their age" do
         before do
-            websocket_send @websocket, HANDSHAKE_MSG
-            @second_websocket = websocket_create
-            assert websocket_running? @websocket
-            assert websocket_running? @second_websocket
-            msg = assert_websocket_receives_message @second_websocket
-            assert_state_value_equals msg, FIRST_CONNECTION, "connection_state", "state"
-        end
+            task.properties.maximum_time_since_message = Time.at(10)
+            syskit_configure_and_start(task)
 
-        it "accepts the second handshake" do
-            msg = { test_message: { axes: Array.new(4, 0),
-                                    buttons: Array.new(16, 0),
-                                    time: 123 },
-                    id: "misc_id_second" }
-            websocket_send @second_websocket, msg
+            @websocket_created = []
+            @websocket = websocket_create
+            message = assert_websocket_receives_message(@websocket)
+            assert_state_value_equals message, FIRST_CONNECTION, "connection_state",
+                                      "state"
 
-            msg = assert_websocket_receives_message @second_websocket
-            assert_state_value_equals msg, STEAL_CONNECTION, "connection_state", "state"
-            assert_state_value_equals msg, "misc_id", "connection_state", "peer"
-
-            assert_websocket_closes_cleanly @websocket
-            msg = assert_websocket_receives_message @websocket
-            assert_state_value_equals msg, LOSE_CONNECTION, "connection_state", "state"
-            assert_state_value_equals msg, "misc_id_second", "connection_state", "peer"
-        end
-    end
-
-    describe "server response is correct" do
-        it "does not send a message before receiving one" do
-            sleep 0.5
-            refute websocket_has_messages?(@websocket)
-        end
-
-        it "rejects invalid first messages" do
-            websocket_send @websocket, "pineapple"
-            msg = assert_websocket_receives_message(@websocket)
-            assert_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
-        end
-
-        it "responds false to a correct control message received before "\
-           "a valid handshake message" do
-            websocket_send @websocket, CMD_MSG
-            msg = assert_websocket_receives_message(@websocket)
-            assert_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
-        end
-
-        it "does not switch to control mode if the received message is not "\
-           "a handshake" do
-            websocket_send @websocket, CMD_MSG
-            assert_websocket_receives_message(@websocket)
-            websocket_send @websocket, CMD_MSG
-            msg = assert_websocket_receives_message(@websocket)
-            assert_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
-        end
-
-        it "replies to a valid handshake messages" do
             websocket_send @websocket, HANDSHAKE_MSG
             msg = assert_websocket_receives_message(@websocket)
             refute_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
         end
-    end
 
-    describe "the raw command output on invalid JSON input" do
-        it "does not send a message when there is no new JSON input" do
-            expect_execution
-                .to { have_no_new_sample task.raw_command_port, at_least_during: 1.0 }
-        end
-
-        it "rejects invalid JSON" do
-            websocket_send websocket, "pineapple"
-            msg = assert_websocket_receives_message(@websocket)
-            assert_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
-        end
-
-        it "rejects valid JSON that is not the expected handshake schema" do
-            websocket_send websocket, {}
-            msg = assert_websocket_receives_message(@websocket)
-            assert_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
-        end
-
-        it "rejects a valid control message while the handshake was expected" do
-            websocket_send websocket, CMD_MSG
-            msg = assert_websocket_receives_message(@websocket)
-            assert_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
-        end
-
-        it "rejects invalid JSON after a valid handshake" do
-            websocket_send websocket, HANDSHAKE_MSG
-            assert_websocket_receives_message(@websocket)
-
-            websocket_send websocket, "pineapple"
-            msg = assert_websocket_receives_message(@websocket)
-            refute msg.fetch("result")
-        end
-
-        it "rejects a valid handshake message during the control phase" do
-            websocket_send websocket, HANDSHAKE_MSG
-            assert_websocket_receives_message(@websocket)
-            websocket_send websocket, HANDSHAKE_MSG
-            msg = assert_websocket_receives_message(@websocket)
-            refute msg.fetch("result")
-        end
-
-        it "rejects an invalid control message after a valid handshake" do
-            websocket_send websocket, HANDSHAKE_MSG
-            assert_websocket_receives_message(@websocket)
-
-            msg = { axes: Array.new(2, 0), buttons: Array.new(5, 0) } # missing time field
-            websocket_send websocket, msg
-            msg = assert_websocket_receives_message(@websocket)
-            refute msg.fetch("result")
-        end
-    end
-
-    describe "the component's nominal behavior" do
-        before do
-            websocket_send @websocket, HANDSHAKE_MSG
-            msg = assert_websocket_receives_message(@websocket)
-            refute_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
-        end
-
-        it "write raw command samples from JSON messages" do
-            expect_execution { websocket_send websocket, CMD_MSG }
-                .timeout(1)
-                .to { have_one_new_sample task.raw_command_port }
-        end
-
-        it "does correct axis conversion" do
-            msg = { axes: [0.1, 0.2, 0.4, 0.5, 0.7], buttons: Array.new(16, 0), time: 123 }
-            msg[:buttons][6] = 0.3
-            msg[:buttons][7] = 0.6
-
-            expected = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
-            sample =
-                expect_execution { websocket_send websocket, msg }
-                .timeout(1).to { have_one_new_sample task.raw_command_port }
-
-            assert_values_near Array.new(13, 0), sample.buttonValue.to_a
-            assert_values_near expected, sample.axisValue.to_a
-        end
-
-        it "does correct button conversion" do
+        it "outputs a command when the message is recent enough" do
+            time = seconds_ago(1)
             msg = {
-                axes: Array.new(5, 0),
-                buttons: [0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0, 0,
-                          0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85],
-                time: 123
-            }
-            expected = [0, 0, 0, 0, 0, 0,
-                        1, 1, 1, 1, 1, 1, 1]
-            sample =
-                expect_execution { websocket_send websocket, msg }
-                .timeout(1)
-                .to { have_one_new_sample task.raw_command_port }
-
-            assert_values_near Array.new(7, 0), sample.axisValue.to_a
-            assert_values_near expected, sample.buttonValue.to_a
-        end
-
-        it "forwards the timestamp" do
-            msg = {
-                axes: Array.new(4, 0),
+                axes: [0.1, 0.2, 0.3, 0.4, 0.5],
                 buttons: Array.new(16, 0),
-                time: 123_456_789
+                time: time.tv_sec * 1e6 + time.tv_usec
             }
 
+            expected = [0.1, 0.2, 0.0, 0.3, 0.4, 0.0, 0.5]
             sample =
                 expect_execution { websocket_send websocket, msg }
                 .timeout(1)
                 .to { have_one_new_sample task.raw_command_port }
-
-            assert_equal msg[:time], sample.time.to_f * 1000
+            assert_equal expected.to_a, sample.axisValue.to_a
         end
 
-        it "ignores when an optional axis is not valid" do
+        it "doesnt output a command when the message is too old" do
+            time = seconds_ago(20)
             msg = {
                 axes: [0.1, 0.2, 0.3, 0.4],
                 buttons: Array.new(16, 0),
-                time: 123_456_789
+                time: time.tv_sec * 1e6 + time.tv_usec
             }
-            expected = [0.1, 0.2, 0.0, 0.3, 0.4, 0.0, Float::NAN]
-
-            sample =
-                expect_execution { websocket_send websocket, msg }
+            expect_execution { websocket_send websocket, msg }
                 .timeout(1)
-                .to { have_one_new_sample task.raw_command_port }
-            assert_equal expected.slice(0, 6), sample.axisValue.to_a.slice(0, 6)
-            assert sample.axisValue.to_a[-1].nan?
+                .to { have_no_new_sample task.raw_command_port }
+        end
+
+        it "still outputs statistics when the control command message is old" do
+            time = seconds_ago(50)
+            msg = {
+                axes: [0.1, 0.2, 0.3, 0.4],
+                buttons: Array.new(16, 0),
+                time: time.tv_sec * 1e6 + time.tv_usec
+            }
+            expect_execution { websocket_send websocket, msg }
+                .timeout(1)
+                .to do
+                    have_no_new_sample task.raw_command_port
+                    have_one_new_sample task.statistics_port
+                end
         end
     end
 
-    describe "the statistics" do
-        before do
-            websocket_send @websocket, HANDSHAKE_MSG
-            msg = assert_websocket_receives_message(@websocket)
-            refute_state_value_equals msg, HANDSHAKE_FAILED, "connection_state", "state"
-        end
-
-        it "counts the number of correct messages" do
-            sample = expect_execution { websocket_send websocket, CMD_MSG }
-                     .timeout(1).to { have_one_new_sample task.statistics_port }
-
-            assert_equal 1, sample.received
-            assert_equal 0, sample.errors
-        end
-
-        it "count invalid JSON input" do
-            sample = expect_execution { websocket_send websocket, "pineapple" }
-                     .timeout(1).to { have_one_new_sample task.statistics_port }
-
-            assert_equal 1, sample.received
-            assert_equal 1, sample.errors
-        end
-
-        it "count messages that are missing expected fields" do
-            msg = { pine: "apple" }
-            sample = expect_execution { websocket_send websocket, msg }
-                     .timeout(1).to { have_one_new_sample task.statistics_port }
-
-            assert_equal 1, sample.received
-            assert_equal 1, sample.errors
-        end
-
-        it "count messages whose expected fields don't have the expected values" do
-            msg = { axes: "pine", buttons: ["apple"] }
-            sample = expect_execution { websocket_send websocket, msg }
-                     .timeout(1).to { have_one_new_sample task.statistics_port }
-
-            assert_equal 1, sample.received
-            assert_equal 1, sample.errors
-        end
+    def seconds_ago(seconds)
+        Time.now - seconds
     end
 
     def websocket_state_struct
@@ -416,7 +504,7 @@ describe OroGen.controldev_websocket.Task do
     end
 
     # Helper that allows compating values within a recursive hash (i.e. JSON doc)
-    def assert_values_near(expected, actual, tolerance: 1e-4)
+    def assert_values_near(expected, actual, tolerance: 1e-4) # rubocop:disable Metrics/AbcSize
         if expected.length != actual.length
             flunk("expected length #{expected.length}, got #{actual.length}")
         end
@@ -425,9 +513,7 @@ describe OroGen.controldev_websocket.Task do
             value = expected[ind]
             v = actual[ind]
             if value.kind_of?(Numeric)
-                unless v.kind_of?(Numeric)
-                    flunk("expected #{v.inspect} to be a number")
-                end
+                flunk("expected #{v.inspect} to be a number") unless v.kind_of?(Numeric)
                 assert_in_delta value, v, tolerance
             else
                 flunk("expected value #{value.inspect} should be a number")

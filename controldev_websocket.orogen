@@ -14,6 +14,8 @@ task_context "Task" do
     property "port", "uint16_t", 58_000
     property "axis_map", "/std/vector</controldev_websocket/Mapping>"
     property "button_map", "/std/vector</controldev_websocket/ButtonMapping>"
+    # Maximum time ellapsed since message was received to consider it as recent enough
+    property "maximum_time_since_message", "base/Time"
 
     output_port "raw_command", "controldev/RawCommand"
     output_port "statistics", "controldev_websocket/Statistics"
