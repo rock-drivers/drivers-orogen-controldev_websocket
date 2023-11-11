@@ -8,9 +8,9 @@
 #include <seasocks/Server.h>
 #include <seasocks/WebSocket.h>
 
-#include <string.h>
 #include <iostream>
 #include <json/json.h>
+#include <string.h>
 
 #include <list>
 
@@ -19,48 +19,51 @@ using namespace controldev;
 using namespace seasocks;
 
 struct controldev_websocket::Client {
-    WebSocket *connection = nullptr;
+    WebSocket* connection = nullptr;
     std::string id = "";
     Json::FastWriter fast;
 
-    bool isEmpty(){
+    bool isEmpty()
+    {
         return connection == nullptr;
     }
-
-
 };
 struct controldev_websocket::JoystickHandler : WebSocket::Handler {
     Client pending;
     Client controlling;
-    Task *task = nullptr;
+    Task* task = nullptr;
     Json::Value msg;
     Json::FastWriter fast;
     Statistics statistic;
 
-    void handleNewConnection(Client newer, Client other){
+    void handleNewConnection(Client newer, Client other)
+    {
         Json::Value feedback;
-        if (other.isEmpty()){
+        if (other.isEmpty()) {
             feedback["connection_state"]["state"] = "new";
-        } else {
+        }
+        else {
             feedback["connection_state"]["state"] = "lost";
-            feedback["connection_state"]["peer"] = newer.id.empty() ? "pending connection"
-                                                                      : newer.id;
+            feedback["connection_state"]["peer"] =
+                newer.id.empty() ? "pending connection" : newer.id;
             other.connection->send(fast.write(feedback));
             other.connection->close();
             feedback["connection_state"]["state"] = "stolen";
-            feedback["connection_state"]["peer"] = other.id.empty() ? "pending connection"
-                                                                      : other.id;
+            feedback["connection_state"]["peer"] =
+                other.id.empty() ? "pending connection" : other.id;
         }
         newer.connection->send(fast.write(feedback));
     };
 
-    void onConnect(WebSocket *socket) override{
+    void onConnect(WebSocket* socket) override
+    {
         Client new_pending;
         new_pending.connection = socket;
         handleNewConnection(new_pending, pending);
         pending = new_pending;
     }
-    void onData(WebSocket *socket, const char *data) override{
+    void onData(WebSocket* socket, const char* data) override
+    {
 
         if (socket != pending.connection && socket != controlling.connection) {
             LOG_WARN_S << "Received message from inactive connection" << std::endl;
@@ -96,41 +99,48 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
         task->_statistics.write(statistic);
         socket->send(fast.write(msg));
     }
-    void onDisconnect(WebSocket *socket) override {
+    void onDisconnect(WebSocket* socket) override
+    {
         if (controlling.connection == socket) {
             controlling = Client();
-        } else if (pending.connection == socket) {
+        }
+        else if (pending.connection == socket) {
             pending = Client();
-        } else {
+        }
+        else {
             LOG_WARN_S << "Received message from inactive connection" << std::endl;
         }
     }
 };
 
-struct controldev_websocket::MessageDecoder{
+struct controldev_websocket::MessageDecoder {
     Json::Value jdata;
     Json::CharReaderBuilder rbuilder;
     std::unique_ptr<Json::CharReader> const reader;
 
-    MessageDecoder() : reader(rbuilder.newCharReader()) {
-
+    MessageDecoder()
+        : reader(rbuilder.newCharReader())
+    {
     }
 
-    static std::string mapFieldName(Mapping::Type type){
-        if (type == Mapping::Type::Button){
+    static std::string mapFieldName(Mapping::Type type)
+    {
+        if (type == Mapping::Type::Button) {
             return "buttons";
         }
-        if (type == Mapping::Type::Axis){
+        if (type == Mapping::Type::Axis) {
             return "axes";
         }
         throw "Failed to get Field Name. The type set is invalid";
     }
 
-    bool parseJSONMessage(char const* data, std::string &errors){
-        return reader->parse(data, data+std::strlen(data), &jdata, &errors);
+    bool parseJSONMessage(char const* data, std::string& errors)
+    {
+        return reader->parse(data, data + std::strlen(data), &jdata, &errors);
     }
 
-    bool validateControlMessage(){
+    bool validateControlMessage()
+    {
         if (!jdata.isMember(mapFieldName(Mapping::Type::Axis)) ||
             !jdata.isMember(mapFieldName(Mapping::Type::Button)) ||
             !jdata.isMember("time")) {
@@ -141,7 +151,8 @@ struct controldev_websocket::MessageDecoder{
         return true;
     }
 
-    bool validateAskControlMessage(){
+    bool validateAskControlMessage()
+    {
         if (!jdata.isMember("test_message")) {
             LOG_ERROR_S << "Invalid test msg, it doesn't contain the test_message field.";
             LOG_ERROR_S << std::endl;
@@ -151,7 +162,8 @@ struct controldev_websocket::MessageDecoder{
         return validateControlMessage();
     }
 
-    bool validateId(){
+    bool validateId()
+    {
         if (!jdata.isMember("id")) {
             LOG_ERROR_S << "Invalid test msg, it doesn't contain the id field.";
             LOG_ERROR_S << std::endl;
@@ -160,7 +172,8 @@ struct controldev_websocket::MessageDecoder{
         return true;
     }
 
-    double getValue(const Mapping &mapping){
+    double getValue(const Mapping& mapping)
+    {
         auto const& field = jdata[mapFieldName(mapping.type)];
         if (!field.isValidIndex(mapping.index)) {
             if (!mapping.optional) {
@@ -173,19 +186,20 @@ struct controldev_websocket::MessageDecoder{
         return field[mapping.index].asDouble();
     }
 
-    std::string getId(){
+    std::string getId()
+    {
         auto const& field = jdata["id"];
         return field.asString();
     }
 
-    base::Time getTime(){
-        return base::Time::fromMilliseconds(
-            jdata["time"].asUInt64()
-        );
+    base::Time getTime()
+    {
+        return base::Time::fromMilliseconds(jdata["time"].asUInt64());
     }
 };
 
-bool Task::parseIncomingWebsocketMessage(char const* data, WebSocket *connection) {
+bool Task::parseIncomingWebsocketMessage(char const* data, WebSocket* connection)
+{
     std::string errs;
     if (!decoder->parseJSONMessage(data, errs)) {
         LOG_ERROR_S << "Failed parsing the message, got error: " << errs << std::endl;
@@ -194,8 +208,9 @@ bool Task::parseIncomingWebsocketMessage(char const* data, WebSocket *connection
     return true;
 }
 
-bool Task::handleControlMessage() {
-    if (!decoder->validateControlMessage()){
+bool Task::handleControlMessage()
+{
+    if (!decoder->validateControlMessage()) {
         return false;
     }
 
@@ -209,27 +224,29 @@ bool Task::handleControlMessage() {
         return false;
     }
 
-    if (!updateRawCommand()){
+    if (!updateRawCommand()) {
         return false;
     }
     _raw_command.write(raw_cmd_obj);
     return true;
 }
 
-bool Task::handleAskControlMessage() {
-    if (!decoder->validateAskControlMessage()){
+bool Task::handleAskControlMessage()
+{
+    if (!decoder->validateAskControlMessage()) {
         return false;
     }
 
-    if (!updateRawCommand()){
+    if (!updateRawCommand()) {
         return false;
     }
 
     return true;
 }
 
-bool Task::getIdFromMessage(std::string &out_str) {
-    if (!decoder->validateId()){
+bool Task::getIdFromMessage(std::string& out_str)
+{
+    if (!decoder->validateId()) {
         return false;
     }
     out_str = decoder->getId();
@@ -237,12 +254,13 @@ bool Task::getIdFromMessage(std::string &out_str) {
 }
 
 // Fill the Raw Command with the JSON data at decoder.
-bool Task::updateRawCommand(){
+bool Task::updateRawCommand()
+{
     try {
         for (uint i = 0; i < axis.size(); ++i) {
             raw_cmd_obj.axisValue.at(i) = decoder->getValue(axis.at(i));
         }
-        for (uint i = 0; i < button.size(); ++i){
+        for (uint i = 0; i < button.size(); ++i) {
             raw_cmd_obj.buttonValue.at(i) =
                 decoder->getValue(button.at(i)) > button.at(i).threshold;
         }
@@ -251,7 +269,7 @@ bool Task::updateRawCommand(){
     }
     // A failure here means that the client sent a bad message or the
     // mapping isn't good. Just inform the client: return false.
-    catch (const std::exception &e) {
+    catch (const std::exception& e) {
         LOG_ERROR_S << "Invalid message, got error: " << e.what() << std::endl;
         return false;
     }
@@ -268,7 +286,7 @@ Task::~Task()
 
 bool Task::configureHook()
 {
-    if (! TaskBase::configureHook()){
+    if (!TaskBase::configureHook()) {
         return false;
     }
 
@@ -283,7 +301,7 @@ bool Task::configureHook()
 
     decoder = new MessageDecoder();
     auto logger = std::make_shared<PrintfLogger>(Logger::Level::Debug);
-    server = new Server (logger);
+    server = new Server(logger);
 
     auto handler = std::make_shared<JoystickHandler>();
     handler->task = this;
@@ -295,7 +313,7 @@ bool Task::configureHook()
 }
 bool Task::startHook()
 {
-    if (! TaskBase::startHook()){
+    if (!TaskBase::startHook()) {
         return false;
     }
 
@@ -303,7 +321,7 @@ bool Task::startHook()
         return false;
     }
 
-    thread = new std::thread([this]{ this->server->loop(); });
+    thread = new std::thread([this] { this->server->loop(); });
 
     return true;
 }

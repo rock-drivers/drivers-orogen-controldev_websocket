@@ -1,13 +1,11 @@
 #ifndef controldev_websocket_TYPES_HPP
 #define controldev_websocket_TYPES_HPP
 
-#include <string>
 #include <base/Time.hpp>
+#include <string>
 
-namespace controldev_websocket
-{
-    struct Mapping
-    {
+namespace controldev_websocket {
+    struct Mapping {
         enum Type {
             Axis = 0,
             Button = 1
@@ -23,13 +21,11 @@ namespace controldev_websocket
         bool optional = false;
     };
 
-    struct ButtonMapping: public Mapping
-    {
+    struct ButtonMapping : public Mapping {
         double threshold = 0.5;
     };
 
-    struct Statistics
-    {
+    struct Statistics {
         int errors = 0;
         int received = 0;
         base::Time time;
