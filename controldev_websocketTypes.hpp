@@ -26,9 +26,12 @@ namespace controldev_websocket {
     };
 
     struct Statistics {
-        int errors = 0;
-        int received = 0;
+        /** Time of generation of this statistics message */
         base::Time time;
+        /** Count of messages received */
+        uint64_t received = 0;
+        /** Count of messages received that were malformed */
+        uint32_t errors = 0;
     };
 } // end namespace controldev_websocket
 
