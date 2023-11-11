@@ -388,8 +388,7 @@ describe OroGen.controldev_websocket.Task do
                 time: time.tv_sec * 1e6 + time.tv_usec
             }
             expect_execution { websocket_send websocket, msg }
-                .timeout(1)
-                .to { have_no_new_sample task.raw_command_port }
+                .to { have_no_new_sample task.raw_command_port, at_least_during: 1 }
         end
 
         it "still outputs statistics when the control command message is old" do
@@ -399,10 +398,10 @@ describe OroGen.controldev_websocket.Task do
                 buttons: Array.new(16, 0),
                 time: time.tv_sec * 1e6 + time.tv_usec
             }
-            expect_execution { websocket_send websocket, msg }
-                .timeout(1)
+            stats =
+                expect_execution { websocket_send websocket, msg }
                 .to do
-                    have_no_new_sample task.raw_command_port
+                    have_no_new_sample task.raw_command_port, at_least_during: 1
                     have_one_new_sample task.statistics_port
                 end
         end
