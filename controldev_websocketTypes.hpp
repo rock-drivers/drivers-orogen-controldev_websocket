@@ -30,8 +30,13 @@ namespace controldev_websocket {
         base::Time time;
         /** Count of messages received */
         uint64_t received = 0;
-        /** Count of messages received that were malformed */
+        /** Count of messages received that were not accepted for control */
         uint32_t errors = 0;
+        /** Count of messages received that were rejected because too old
+         *
+         * This count is also included in errors
+         */
+        uint32_t too_old = 0;
     };
 } // end namespace controldev_websocket
 

@@ -218,6 +218,7 @@ bool Task::handleControlMessage()
         LOG_ERROR_S << "Control message is too old. Expected a message from at most "
                     << m_maximum_time_since_message << "s ago. Got a message "
                     << time_since_message << "s old";
+        m_statistics.too_old++;
         return false;
     }
 

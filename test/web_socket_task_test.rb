@@ -318,6 +318,7 @@ describe OroGen.controldev_websocket.Task do
 
                 assert_equal 1, sample.received
                 assert_equal 0, sample.errors
+                assert_equal 0, sample.too_old
             end
 
             it "count invalid JSON input" do
@@ -326,6 +327,7 @@ describe OroGen.controldev_websocket.Task do
 
                 assert_equal 1, sample.received
                 assert_equal 1, sample.errors
+                assert_equal 0, sample.too_old
             end
 
             it "count messages that are missing expected fields" do
@@ -335,6 +337,7 @@ describe OroGen.controldev_websocket.Task do
 
                 assert_equal 1, sample.received
                 assert_equal 1, sample.errors
+                assert_equal 0, sample.too_old
             end
 
             it "count messages whose expected fields don't have the expected values" do
@@ -344,6 +347,7 @@ describe OroGen.controldev_websocket.Task do
 
                 assert_equal 1, sample.received
                 assert_equal 1, sample.errors
+                assert_equal 0, sample.too_old
             end
         end
     end
@@ -404,6 +408,9 @@ describe OroGen.controldev_websocket.Task do
                     have_no_new_sample task.raw_command_port, at_least_during: 1
                     have_one_new_sample task.statistics_port
                 end
+            assert_equal 1, stats.received
+            assert_equal 1, stats.errors
+            assert_equal 1, stats.too_old
         end
     end
 
