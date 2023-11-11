@@ -59,7 +59,6 @@ namespace controldev_websocket {
         std::vector<Mapping> axis;
         std::vector<ButtonMapping> button;
 
-        bool is_controlling = false;
         Statistics m_statistics;
 
         base::Time m_maximum_time_since_message;
