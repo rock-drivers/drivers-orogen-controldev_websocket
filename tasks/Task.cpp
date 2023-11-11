@@ -64,7 +64,6 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
     }
     void onData(WebSocket* socket, const char* data) override
     {
-
         if (socket != pending.connection && socket != controlling.connection) {
             LOG_WARN_S << "Received message from inactive connection" << std::endl;
             return;
@@ -89,14 +88,12 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
         }
         result = result && task->handleControlMessage();
         msg["result"] = result;
-        ++task->received;
+        ++task->m_statistics.received;
 
         // Increment errors count if the result is false, do nothing otherwise
-        task->errors += result ? 0 : 1;
-        statistic.received = task->received;
-        statistic.errors = task->errors;
-        statistic.time = base::Time::now();
-        task->_statistics.write(statistic);
+        task->m_statistics.errors += result ? 0 : 1;
+
+        task->outputStatistics();
         socket->send(fast.write(msg));
     }
     void onDisconnect(WebSocket* socket) override
@@ -290,9 +287,6 @@ bool Task::configureHook()
         return false;
     }
 
-    received = 0;
-    errors = 0;
-
     button = _button_map.get();
     axis = _axis_map.get();
 
@@ -321,6 +315,7 @@ bool Task::startHook()
         return false;
     }
 
+    m_statistics = Statistics();
     thread = new std::thread([this] { this->server->loop(); });
 
     return true;
@@ -345,4 +340,10 @@ void Task::cleanupHook()
     TaskBase::cleanupHook();
     delete server;
     delete decoder;
+}
+
+void Task::outputStatistics()
+{
+    m_statistics.time = base::Time::now();
+    _statistics.write(m_statistics);
 }

@@ -54,13 +54,13 @@ namespace controldev_websocket {
         bool handleAskControlMessage();
         bool handleControlMessage();
         bool getIdFromMessage(std::string& out_str);
+        void outputStatistics();
 
         std::vector<Mapping> axis;
         std::vector<ButtonMapping> button;
 
         bool is_controlling = false;
-        int errors = 0;
-        int received = 0;
+        Statistics m_statistics;
 
         base::Time m_maximum_time_since_message;
 
