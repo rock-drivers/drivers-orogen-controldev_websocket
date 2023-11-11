@@ -369,7 +369,7 @@ describe OroGen.controldev_websocket.Task do
             msg = {
                 axes: [0.1, 0.2, 0.3, 0.4, 0.5],
                 buttons: Array.new(16, 0),
-                time: time.tv_sec * 1e6 + time.tv_usec
+                time: time.tv_sec * 1e3 + time.tv_usec / 1_000
             }
 
             expected = [0.1, 0.2, 0.0, 0.3, 0.4, 0.0, 0.5]
@@ -385,7 +385,7 @@ describe OroGen.controldev_websocket.Task do
             msg = {
                 axes: [0.1, 0.2, 0.3, 0.4],
                 buttons: Array.new(16, 0),
-                time: time.tv_sec * 1e6 + time.tv_usec
+                time: time.tv_sec * 1e3 + time.tv_usec / 1_000
             }
             expect_execution { websocket_send websocket, msg }
                 .to { have_no_new_sample task.raw_command_port, at_least_during: 1 }
@@ -396,7 +396,7 @@ describe OroGen.controldev_websocket.Task do
             msg = {
                 axes: [0.1, 0.2, 0.3, 0.4],
                 buttons: Array.new(16, 0),
-                time: time.tv_sec * 1e6 + time.tv_usec
+                time: time.tv_sec * 1e3 + time.tv_usec / 1_000
             }
             stats =
                 expect_execution { websocket_send websocket, msg }
