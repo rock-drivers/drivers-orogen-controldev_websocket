@@ -199,6 +199,16 @@ bool Task::handleControlMessage() {
         return false;
     }
 
+    auto time_since_message = base::Time::now() - decoder->getTime();
+
+    if (!m_maximum_time_since_message.isNull() &&
+        time_since_message > m_maximum_time_since_message) {
+        LOG_ERROR_S << "Control message is too old. Expected a message from at most "
+                    << m_maximum_time_since_message << "s ago. Got a message "
+                    << time_since_message << "s old";
+        return false;
+    }
+
     if (!updateRawCommand()){
         return false;
     }
@@ -278,6 +288,8 @@ bool Task::configureHook()
     auto handler = std::make_shared<JoystickHandler>();
     handler->task = this;
     server->addWebSocketHandler("/ws", handler, true);
+
+    m_maximum_time_since_message = _maximum_time_since_message.get();
 
     return true;
 }

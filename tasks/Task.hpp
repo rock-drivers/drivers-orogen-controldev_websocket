@@ -59,6 +59,7 @@ namespace controldev_websocket{
         int errors = 0;
         int received = 0;
 
+        base::Time m_maximum_time_since_message;
     public:
         /** TaskContext constructor for Task
          * \param name Name of the task. This name needs to be unique to make it identifiable via nameservices.
