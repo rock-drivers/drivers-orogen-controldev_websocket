@@ -55,6 +55,7 @@ namespace controldev_websocket {
         bool handleControlMessage();
         bool getIdFromMessage(std::string& out_str);
         void outputStatistics();
+        base::Time getLastMessageTime() const;
 
         std::vector<Mapping> axis;
         std::vector<ButtonMapping> button;

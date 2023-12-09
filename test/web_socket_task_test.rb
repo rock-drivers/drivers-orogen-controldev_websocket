@@ -50,6 +50,7 @@ describe OroGen.controldev_websocket.Task do
             end
 
         @url = "ws://localhost:65432/ws"
+        @websocket_created = []
     end
 
     after do
@@ -59,11 +60,101 @@ describe OroGen.controldev_websocket.Task do
         end
     end
 
+    describe "connection diagnostics" do
+        before do
+            syskit_configure_and_start(task)
+        end
+
+        it "indicates that there is a pending connection" do
+            expect_execution { websocket_create }
+                .to do
+                    have_one_new_sample(task.statistics_port)
+                        .matching { |s| s.pending_connection_id == 1 }
+                end
+        end
+
+        it "upgrades the connection to controlling once the handshake goes through" do
+            socket = websocket_create
+            sample =
+                expect_execution { websocket_send socket, HANDSHAKE_MSG }
+                .to do
+                    have_one_new_sample(task.statistics_port)
+                        .matching { |s| s.controlling_connection_id == 1 }
+                end
+            assert_equal 0, sample.pending_connection_id
+        end
+
+        it "indicates that there is a pending connection in parallel "\
+           "to an existing one" do
+            socket = websocket_create
+            expect_execution { websocket_send socket, HANDSHAKE_MSG }
+                .to do
+                    have_one_new_sample(task.statistics_port)
+                        .matching { |s| s.controlling_connection_id == 1 }
+                end
+            s = expect_execution { websocket_create }
+                .to do
+                    have_one_new_sample(task.statistics_port)
+                        .matching { |s| s.pending_connection_id == 2 }
+                end
+
+            assert_equal 1, s.controlling_connection_id
+        end
+
+        it "successfully indicates a new connection replaced the old one" do
+            socket = websocket_create
+            expect_execution { websocket_send socket, HANDSHAKE_MSG }
+                .to do
+                    have_one_new_sample(task.statistics_port)
+                        .matching { |s| s.controlling_connection_id == 1 }
+                end
+            expect_execution { socket = websocket_create }
+                .to do
+                    have_one_new_sample(task.statistics_port)
+                        .matching { |s| s.pending_connection_id == 2 }
+                end
+            sample = expect_execution { websocket_send socket, HANDSHAKE_MSG }
+                .to do
+                    have_one_new_sample(task.statistics_port)
+                        .matching { |s| s.controlling_connection_id == 2 }
+                end
+
+            assert_equal 0, sample.pending_connection_id
+        end
+
+        it "indicates that a pending connection closed" do
+            socket = nil
+            expect_execution { socket = websocket_create }
+                .to do
+                    have_one_new_sample(task.statistics_port)
+                        .matching { |s| s.pending_connection_id == 1 }
+                end
+            expect_execution { socket.ws.close }
+                .to do
+                    have_one_new_sample(task.statistics_port)
+                        .matching { |s| s.pending_connection_id == 0 }
+                end
+        end
+
+        it "indicates that the controlling connection closed" do
+            socket = websocket_create
+            expect_execution { websocket_send socket, HANDSHAKE_MSG }
+                .to do
+                    have_one_new_sample(task.statistics_port)
+                        .matching { |s| s.controlling_connection_id == 1 }
+                end
+            expect_execution { socket.ws.close }
+                .to do
+                    have_one_new_sample(task.statistics_port)
+                        .matching { |s| s.controlling_connection_id == 0 }
+                end
+        end
+    end
+
     describe "no maximum time since messages" do
         before do
             syskit_configure_and_start(task)
 
-            @websocket_created = []
             @websocket = websocket_create
             message = assert_websocket_receives_message(@websocket)
             assert_state_value_equals message, FIRST_CONNECTION, "connection_state",
@@ -357,7 +448,6 @@ describe OroGen.controldev_websocket.Task do
             task.properties.maximum_time_since_message = Time.at(10)
             syskit_configure_and_start(task)
 
-            @websocket_created = []
             @websocket = websocket_create
             message = assert_websocket_receives_message(@websocket)
             assert_state_value_equals message, FIRST_CONNECTION, "connection_state",
