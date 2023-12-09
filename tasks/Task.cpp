@@ -22,6 +22,7 @@ struct controldev_websocket::Client {
     WebSocket* connection = nullptr;
     std::string id = "";
     Json::FastWriter fast;
+    uint16_t connection_id = 0;
 
     bool isEmpty()
     {
@@ -31,6 +32,7 @@ struct controldev_websocket::Client {
 struct controldev_websocket::JoystickHandler : WebSocket::Handler {
     Client pending;
     Client controlling;
+    uint16_t connection_id = 0;
     Task* task = nullptr;
     Json::Value msg;
     Json::FastWriter fast;
@@ -59,8 +61,11 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
     {
         Client new_pending;
         new_pending.connection = socket;
+        new_pending.connection_id = ++connection_id;
         handleNewConnection(new_pending, pending);
         pending = new_pending;
+        task->m_statistics.pending_connection_id = pending.connection_id;
+        task->outputStatistics();
     }
     void onData(WebSocket* socket, const char* data) override
     {
@@ -78,6 +83,9 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
                 handleNewConnection(pending, controlling);
                 controlling = pending;
                 pending = Client();
+                task->m_statistics.pending_connection_id = 0;
+                task->m_statistics.controlling_connection_id = controlling.connection_id;
+                task->outputStatistics();
                 LOG_WARN_S << "Control given to the id " << controlling.id << std::endl;
                 return;
             }
@@ -91,6 +99,7 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
         ++task->m_statistics.received;
 
         // Increment errors count if the result is false, do nothing otherwise
+        task->m_statistics.last_received_message_time = task->getLastMessageTime();
         task->m_statistics.errors += result ? 0 : 1;
 
         task->outputStatistics();
@@ -100,9 +109,13 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
     {
         if (controlling.connection == socket) {
             controlling = Client();
+            task->m_statistics.controlling_connection_id = 0;
+            task->outputStatistics();
         }
         else if (pending.connection == socket) {
             pending = Client();
+            task->m_statistics.pending_connection_id = 0;
+            task->outputStatistics();
         }
         else {
             LOG_WARN_S << "Received message from inactive connection" << std::endl;
@@ -211,7 +224,8 @@ bool Task::handleControlMessage()
         return false;
     }
 
-    auto time_since_message = base::Time::now() - decoder->getTime();
+    auto message_time = decoder->getTime();
+    auto time_since_message = base::Time::now() - message_time;
 
     if (!m_maximum_time_since_message.isNull() &&
         time_since_message > m_maximum_time_since_message) {
@@ -227,6 +241,10 @@ bool Task::handleControlMessage()
     }
     _raw_command.write(raw_cmd_obj);
     return true;
+}
+
+base::Time Task::getLastMessageTime() const {
+    return decoder->getTime();
 }
 
 bool Task::handleAskControlMessage()
