@@ -34,7 +34,6 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
     Client controlling;
     uint16_t connection_id = 0;
     Task* task = nullptr;
-    Json::Value msg;
     Json::FastWriter fast;
     Statistics statistic;
 
@@ -89,12 +88,15 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
                 LOG_WARN_S << "Control given to the id " << controlling.id << std::endl;
                 return;
             }
+
             LOG_WARN_S << "Handshake with id " << pending.id << " failed" << std::endl;
+            Json::Value msg;
             msg["connection_state"]["state"] = "handshake failed";
             socket->send(fast.write(msg));
             return;
         }
         result = result && task->handleControlMessage();
+        Json::Value msg;
         msg["result"] = result;
         ++task->m_statistics.received;
 
