@@ -7,6 +7,7 @@
 #include <base/Float.hpp>
 #include <controldev/RawCommand.hpp>
 
+#include <future>
 #include <memory>
 #include <thread>
 #include <vector>
@@ -45,8 +46,8 @@ namespace controldev_websocket {
 
         MessageDecoder* decoder = nullptr;
 
-        seasocks::Server* server = nullptr;
-        std::thread* thread = nullptr;
+        seasocks::Server *server = nullptr;
+        std::future<void> server_thread;
         controldev::RawCommand raw_cmd_obj;
         bool parseIncomingWebsocketMessage(char const* data,
             seasocks::WebSocket* connection);

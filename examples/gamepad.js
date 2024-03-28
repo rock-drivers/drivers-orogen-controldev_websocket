@@ -35,18 +35,37 @@ function formatGamepadState(gamepad) {
 }
 
 function createGamepadWatch() {
+    let lastTimestamps = [];
     window.setInterval(function() {
         body = document.body;
+
+        let changed = false;
+        for (let i = 0; i < navigator.getGamepads().length; ++i) {
+            let gamepad = navigator.getGamepads()[i];
+            let timestamp;
+            if (gamepad) {
+                timestamp = gamepad.timestamp;
+            }
+
+            changed = changed || lastTimestamps[i] !== timestamp;
+        }
+
+        if (!changed) {
+            return;
+        }
+
         document.body.innerHTML = "";
         for (let i = 0; i < navigator.getGamepads().length; ++i) {
             let gamepad = navigator.getGamepads()[i];
             if (gamepad !== null) {
                 body.appendChild(formatGamepadState(gamepad))
+                lastTimestamps[i] = gamepad.timestamp;
             }
             else {
                 gamepad_info = document.createElement("div");
                 gamepad_info.innerHTML = `Gamepad [${i}] is null`
                 body.appendChild(gamepad_info)
+                lastTimestamps[i] = undefined;
             }
         }
     }, 100)

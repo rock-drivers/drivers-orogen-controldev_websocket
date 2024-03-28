@@ -12,11 +12,15 @@
 #include <json/json.h>
 #include <string.h>
 
+#include <future>
+#include <chrono>
+
 #include <list>
 
 using namespace controldev_websocket;
 using namespace controldev;
 using namespace seasocks;
+using namespace std::chrono_literals;
 
 struct controldev_websocket::Client {
     WebSocket* connection = nullptr;
@@ -66,7 +70,7 @@ struct controldev_websocket::JoystickHandler : WebSocket::Handler {
         task->m_statistics.pending_connection_id = pending.connection_id;
         task->outputStatistics();
     }
-    void onData(WebSocket* socket, const char* data) override
+    void onData(WebSocket *socket, const char *data) override
     {
         if (socket != pending.connection && socket != controlling.connection) {
             LOG_WARN_S << "Received message from inactive connection" << std::endl;
@@ -315,13 +319,6 @@ bool Task::configureHook()
     raw_cmd_obj.axisValue.resize(axis.size(), 0.0);
 
     decoder = new MessageDecoder();
-    auto logger = std::make_shared<PrintfLogger>(Logger::Level::Debug);
-    server = new Server(logger);
-
-    auto handler = std::make_shared<JoystickHandler>();
-    handler->task = this;
-    server->addWebSocketHandler("/ws", handler, true);
-
     m_maximum_time_since_message = _maximum_time_since_message.get();
 
     return true;
@@ -332,17 +329,30 @@ bool Task::startHook()
         return false;
     }
 
-    if (!server->startListening(_port.get())) {
-        return false;
-    }
-
+    int port = _port.get();
     m_statistics = Statistics();
-    thread = new std::thread([this] { this->server->loop(); });
+    server_thread = std::async(std::launch::async, [this, port] {
+        auto logger = std::make_shared<PrintfLogger>(Logger::Level::Debug);
+        Server server(logger);
+
+        auto handler = std::make_shared<JoystickHandler>();
+        handler->task = this;
+        server.addWebSocketHandler("/ws", handler, true);
+        server.serve("", port);
+        this->server = &server;
+    });
 
     return true;
 }
 void Task::updateHook()
 {
+    auto status = server_thread.wait_for(0ms);
+
+    if (status == std::future_status::ready) {
+        LOG_ERROR_S << "Server thread unexpectedly terminated" << std::endl;
+        exception();
+    }
+
     TaskBase::updateHook();
 }
 void Task::errorHook()
@@ -353,13 +363,11 @@ void Task::stopHook()
 {
     TaskBase::stopHook();
     server->terminate();
-    thread->join();
-    delete thread;
+    server_thread.wait();
 }
 void Task::cleanupHook()
 {
     TaskBase::cleanupHook();
-    delete server;
     delete decoder;
 }
 
