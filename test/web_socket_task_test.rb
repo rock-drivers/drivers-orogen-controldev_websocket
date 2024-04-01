@@ -27,11 +27,19 @@ describe OroGen.controldev_websocket.Task do
         id: "misc_id"
     }.freeze
 
+    def allocate_interface_port
+        server = TCPServer.new(0)
+        server.local_address.ip_port
+    ensure
+        server&.close
+    end
+
     before do
         @task = task = syskit_deploy(
             OroGen.controldev_websocket.Task.deployed_as("websocket")
         )
-        task.properties.port = 65_432
+        @port = allocate_interface_port
+        task.properties.port = @port
         task.properties.axis_map = [
             Types.controldev_websocket.Mapping.new(index: 0, type: :Axis),
             Types.controldev_websocket.Mapping.new(index: 1, type: :Axis),
@@ -49,7 +57,7 @@ describe OroGen.controldev_websocket.Task do
                      .new(index: i, type: :Button, threshold: 0.5)
             end
 
-        @url = "ws://localhost:65432/ws"
+        @url = "ws://localhost:#{@port}/ws"
         @websocket_created = []
     end
 
