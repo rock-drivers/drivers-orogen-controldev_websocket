@@ -57,7 +57,7 @@ describe OroGen.controldev_websocket.Task do
                      .new(index: i, type: :Button, threshold: 0.5)
             end
 
-        @url = "ws://localhost:#{@port}/ws"
+        @url = "ws://127.0.0.1:#{@port}/ws"
         @websocket_created = []
     end
 
