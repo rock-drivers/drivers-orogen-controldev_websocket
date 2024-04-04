@@ -17,6 +17,7 @@
 
 #include <list>
 
+using namespace std;
 using namespace controldev_websocket;
 using namespace controldev;
 using namespace seasocks;
@@ -331,22 +332,35 @@ bool Task::startHook()
 
     int port = _port.get();
     m_statistics = Statistics();
-    server_thread = std::async(std::launch::async, [this, port] {
+    m_server = nullptr;
+
+    mutex server_thread_ready_mutex;
+    unique_lock<mutex> server_thread_ready_lock(server_thread_ready_mutex);
+    condition_variable server_thread_ready_signal;
+
+    m_server_thread = std::async(std::launch::async, [this, &server_thread_ready_signal, port] {
         auto logger = std::make_shared<PrintfLogger>(Logger::Level::Debug);
         Server server(logger);
+
+        // Needed to terminate in stopHook
+        this->m_server = &server;
+        server_thread_ready_signal.notify_all();
 
         auto handler = std::make_shared<JoystickHandler>();
         handler->task = this;
         server.addWebSocketHandler("/ws", handler, true);
         server.serve("", port);
-        this->server = &server;
     });
+
+    while (!this->m_server) {
+        server_thread_ready_signal.wait(server_thread_ready_lock);
+    }
 
     return true;
 }
 void Task::updateHook()
 {
-    auto status = server_thread.wait_for(0ms);
+    auto status = m_server_thread.wait_for(0ms);
 
     if (status == std::future_status::ready) {
         LOG_ERROR_S << "Server thread unexpectedly terminated" << std::endl;
@@ -362,8 +376,8 @@ void Task::errorHook()
 void Task::stopHook()
 {
     TaskBase::stopHook();
-    server->terminate();
-    server_thread.wait();
+    m_server->terminate();
+    m_server_thread.wait();
 }
 void Task::cleanupHook()
 {

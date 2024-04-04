@@ -46,8 +46,8 @@ namespace controldev_websocket {
 
         MessageDecoder* decoder = nullptr;
 
-        seasocks::Server *server = nullptr;
-        std::future<void> server_thread;
+        seasocks::Server *m_server = nullptr;
+        std::future<void> m_server_thread;
         controldev::RawCommand raw_cmd_obj;
         bool parseIncomingWebsocketMessage(char const* data,
             seasocks::WebSocket* connection);
