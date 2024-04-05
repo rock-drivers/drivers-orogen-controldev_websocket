@@ -68,6 +68,12 @@ describe OroGen.controldev_websocket.Task do
         end
     end
 
+    it "stops" do
+        syskit_configure_and_start(task)
+        expect_execution { task.stop! }
+            .to { emit task.interrupt_event }
+    end
+
     describe "connection diagnostics" do
         before do
             syskit_configure_and_start(task)
