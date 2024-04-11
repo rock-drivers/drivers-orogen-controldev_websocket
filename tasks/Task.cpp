@@ -246,7 +246,7 @@ bool Task::handleControlMessage()
     if (!updateRawCommand()) {
         return false;
     }
-    _raw_command.write(raw_cmd_obj);
+    _raw_command.write(m_raw_cmd_obj);
     return true;
 }
 
@@ -281,13 +281,13 @@ bool Task::updateRawCommand()
 {
     try {
         for (uint i = 0; i < axis.size(); ++i) {
-            raw_cmd_obj.axisValue.at(i) = decoder->getValue(axis.at(i));
+            m_raw_cmd_obj.axisValue.at(i) = decoder->getValue(axis.at(i));
         }
         for (uint i = 0; i < button.size(); ++i) {
-            raw_cmd_obj.buttonValue.at(i) =
+            m_raw_cmd_obj.buttonValue.at(i) =
                 decoder->getValue(button.at(i)) > button.at(i).threshold;
         }
-        raw_cmd_obj.time = decoder->getTime();
+        m_raw_cmd_obj.time = decoder->getTime();
         return true;
     }
     // A failure here means that the client sent a bad message or the
@@ -316,8 +316,8 @@ bool Task::configureHook()
     button = _button_map.get();
     axis = _axis_map.get();
 
-    raw_cmd_obj.buttonValue.resize(button.size(), 0);
-    raw_cmd_obj.axisValue.resize(axis.size(), 0.0);
+    m_raw_cmd_obj.buttonValue.resize(button.size(), 0);
+    m_raw_cmd_obj.axisValue.resize(axis.size(), 0.0);
 
     decoder = new MessageDecoder();
     m_maximum_time_since_message = _maximum_time_since_message.get();
