@@ -63,7 +63,7 @@ describe OroGen.controldev_websocket.Task do
 
     after do
         @websocket_created.each do |s|
-            s.ws.close(10) if s.ws.open?
+            s.ws.close(10) if s.ws&.open?
             flunk("connection thread failed to quit") unless s.connection_thread.join(10)
         end
     end
