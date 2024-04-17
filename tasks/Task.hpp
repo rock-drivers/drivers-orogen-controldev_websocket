@@ -44,7 +44,7 @@ namespace controldev_websocket {
         friend class TaskBase;
         friend struct JoystickHandler;
 
-        MessageDecoder* decoder = nullptr;
+        std::unique_ptr<MessageDecoder> m_decoder;
 
         seasocks::Server *m_server = nullptr;
         std::future<void> m_server_thread;
