@@ -335,28 +335,44 @@ bool Task::startHook()
     m_server = nullptr;
 
     mutex server_thread_ready_mutex;
-    unique_lock<mutex> server_thread_ready_lock(server_thread_ready_mutex);
     condition_variable server_thread_ready_signal;
 
-    m_server_thread = std::async(std::launch::async, [this, &server_thread_ready_signal, port] {
+    bool error = false;
+    m_server_thread = std::async(std::launch::async,
+                                 [this, port,
+                                  &server_thread_ready_signal,
+                                  &server_thread_ready_mutex, &error] {
         auto logger = std::make_shared<PrintfLogger>(Logger::Level::Debug);
         Server server(logger);
-
-        // Needed to terminate in stopHook
-        this->m_server = &server;
-        server_thread_ready_signal.notify_all();
 
         auto handler = std::make_shared<JoystickHandler>();
         handler->task = this;
         server.addWebSocketHandler("/ws", handler, true);
-        server.serve("", port);
+        if (!server.startListening(port)) {
+            unique_lock<mutex> server_thread_ready_lock(server_thread_ready_mutex);
+            error = true;
+            server_thread_ready_signal.notify_all();
+            return;
+        }
+
+        // Needed to terminate in stopHook
+        {
+            unique_lock<mutex> server_thread_ready_lock(server_thread_ready_mutex);
+            this->m_server = &server;
+            server_thread_ready_signal.notify_all();
+        }
+
+        server.loop();
     });
 
-    while (!this->m_server) {
-        server_thread_ready_signal.wait(server_thread_ready_lock);
+    {
+        unique_lock<mutex> server_thread_ready_lock(server_thread_ready_mutex);
+        while (!this->m_server && !error) {
+            server_thread_ready_signal.wait(server_thread_ready_lock);
+        }
     }
 
-    return true;
+    return !error;
 }
 void Task::updateHook()
 {
