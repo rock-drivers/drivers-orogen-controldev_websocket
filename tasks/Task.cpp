@@ -218,7 +218,7 @@ struct controldev_websocket::MessageDecoder {
 bool Task::parseIncomingWebsocketMessage(char const* data, WebSocket* connection)
 {
     std::string errs;
-    if (!decoder->parseJSONMessage(data, errs)) {
+    if (!m_decoder->parseJSONMessage(data, errs)) {
         LOG_ERROR_S << "Failed parsing the message, got error: " << errs << std::endl;
         return false;
     }
@@ -227,11 +227,11 @@ bool Task::parseIncomingWebsocketMessage(char const* data, WebSocket* connection
 
 bool Task::handleControlMessage()
 {
-    if (!decoder->validateControlMessage()) {
+    if (!m_decoder->validateControlMessage()) {
         return false;
     }
 
-    auto message_time = decoder->getTime();
+    auto message_time = m_decoder->getTime();
     auto time_since_message = base::Time::now() - message_time;
 
     if (!m_maximum_time_since_message.isNull() &&
@@ -251,12 +251,12 @@ bool Task::handleControlMessage()
 }
 
 base::Time Task::getLastMessageTime() const {
-    return decoder->getTime();
+    return m_decoder->getTime();
 }
 
 bool Task::handleAskControlMessage()
 {
-    if (!decoder->validateAskControlMessage()) {
+    if (!m_decoder->validateAskControlMessage()) {
         return false;
     }
 
@@ -269,10 +269,10 @@ bool Task::handleAskControlMessage()
 
 bool Task::getIdFromMessage(std::string& out_str)
 {
-    if (!decoder->validateId()) {
+    if (!m_decoder->validateId()) {
         return false;
     }
-    out_str = decoder->getId();
+    out_str = m_decoder->getId();
     return true;
 }
 
@@ -281,13 +281,13 @@ bool Task::updateRawCommand()
 {
     try {
         for (uint i = 0; i < axis.size(); ++i) {
-            m_raw_cmd_obj.axisValue.at(i) = decoder->getValue(axis.at(i));
+            m_raw_cmd_obj.axisValue.at(i) = m_decoder->getValue(axis.at(i));
         }
         for (uint i = 0; i < button.size(); ++i) {
             m_raw_cmd_obj.buttonValue.at(i) =
-                decoder->getValue(button.at(i)) > button.at(i).threshold;
+                m_decoder->getValue(button.at(i)) > button.at(i).threshold;
         }
-        m_raw_cmd_obj.time = decoder->getTime();
+        m_raw_cmd_obj.time = m_decoder->getTime();
         return true;
     }
     // A failure here means that the client sent a bad message or the
@@ -319,7 +319,7 @@ bool Task::configureHook()
     m_raw_cmd_obj.buttonValue.resize(button.size(), 0);
     m_raw_cmd_obj.axisValue.resize(axis.size(), 0.0);
 
-    decoder = new MessageDecoder();
+    m_decoder = std::make_unique<MessageDecoder>();
     m_maximum_time_since_message = _maximum_time_since_message.get();
 
     return true;
@@ -335,28 +335,44 @@ bool Task::startHook()
     m_server = nullptr;
 
     mutex server_thread_ready_mutex;
-    unique_lock<mutex> server_thread_ready_lock(server_thread_ready_mutex);
     condition_variable server_thread_ready_signal;
 
-    m_server_thread = std::async(std::launch::async, [this, &server_thread_ready_signal, port] {
+    bool error = false;
+    m_server_thread = std::async(std::launch::async,
+                                 [this, port,
+                                  &server_thread_ready_signal,
+                                  &server_thread_ready_mutex, &error] {
         auto logger = std::make_shared<PrintfLogger>(Logger::Level::Debug);
         Server server(logger);
-
-        // Needed to terminate in stopHook
-        this->m_server = &server;
-        server_thread_ready_signal.notify_all();
 
         auto handler = std::make_shared<JoystickHandler>();
         handler->task = this;
         server.addWebSocketHandler("/ws", handler, true);
-        server.serve("", port);
+        if (!server.startListening(port)) {
+            unique_lock<mutex> server_thread_ready_lock(server_thread_ready_mutex);
+            error = true;
+            server_thread_ready_signal.notify_all();
+            return;
+        }
+
+        // Needed to terminate in stopHook
+        {
+            unique_lock<mutex> server_thread_ready_lock(server_thread_ready_mutex);
+            this->m_server = &server;
+            server_thread_ready_signal.notify_all();
+        }
+
+        server.loop();
     });
 
-    while (!this->m_server) {
-        server_thread_ready_signal.wait(server_thread_ready_lock);
+    {
+        unique_lock<mutex> server_thread_ready_lock(server_thread_ready_mutex);
+        while (!this->m_server && !error) {
+            server_thread_ready_signal.wait(server_thread_ready_lock);
+        }
     }
 
-    return true;
+    return !error;
 }
 void Task::updateHook()
 {
@@ -382,7 +398,6 @@ void Task::stopHook()
 void Task::cleanupHook()
 {
     TaskBase::cleanupHook();
-    delete decoder;
 }
 
 void Task::outputStatistics()
